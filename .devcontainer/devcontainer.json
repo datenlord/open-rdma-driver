@@ -1,0 +1,13 @@
+{
+	"name": "DatenLord RDMA development environment",
+	// Or use a Dockerfile or Docker Compose file. More info: https://containers.dev/guide/dockerfile
+	"image": "ttt",
+	"customizations": {
+		"vscode": {
+			"extensions": [
+				"llvm-vs-code-extensions.vscode-clangd"
+			]
+		}
+	},
+	"runArgs": ["--privileged"]
+}
