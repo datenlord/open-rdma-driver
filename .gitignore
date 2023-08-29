@@ -4,3 +4,4 @@
 *.symvers
 *.ko
 *.mod
+*.mod.c

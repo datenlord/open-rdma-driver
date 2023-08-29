@@ -1,0 +1,5 @@
+add-auto-load-safe-path /linux-src
+file /linux-src/vmlinux
+
+target remote :1234
+lx-symbols /linux-src/drivers/infiniband /workspaces/dtld-rdma-driver/driver
