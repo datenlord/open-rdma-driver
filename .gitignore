@@ -5,3 +5,5 @@
 *.ko
 *.mod
 *.mod.c
+.cache
+compile_commands.json
