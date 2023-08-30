@@ -2,6 +2,8 @@
 
 #include <rdma/rdma_netlink.h>
 #include <net/addrconf.h>
+#include <linux/pci.h>
+#include "xdma.h"
 #include "dtld.h"
 
 
@@ -10,6 +12,12 @@ MODULE_DESCRIPTION("Mellanox 5th generation network adapters (ConnectX series) I
 MODULE_LICENSE("Dual BSD/GPL");
 
 
+static const struct pci_device_id pci_ids[] = {
+	{ PCI_DEVICE(0x10ee, 0x9038), }, // XDMA
+	{0,}
+};
+
+MODULE_DEVICE_TABLE(pci, pci_ids);
 
 
 /* initialize dtld device parameters */
@@ -90,6 +98,7 @@ static void dtld_init_port_param(struct dtld_port *port)
 	port->subnet_prefix		= cpu_to_be64(DTLD_PORT_SUBNET_PREFIX);
 }
 
+static void dtld_init_ports(struct dtld_dev *dtld) __attribute__((used));
 static void dtld_init_ports(struct dtld_dev *dtld)
 {
 	struct dtld_port *port = &dtld->port;
@@ -114,6 +123,25 @@ void dtld_set_mtu(struct dtld_dev *dtld, unsigned int ndev_mtu)
 	port->mtu_cap = ib_mtu_enum_to_int(mtu);
 }
 
+static int probe_one(struct pci_dev *pdev, const struct pci_device_id *id)
+{
+	struct xdma_pci_dev *xpdev = NULL;
+	// struct xdma_dev *xdev;
+	// void *hndl;
+	xpdev = xpdev_alloc(pdev);
+	if (!xpdev)
+		return -ENOMEM;
+	
+	// hndl = xdma_dev
+	return 0;
+}
+
+static struct pci_driver pci_driver = {
+	.name = "dtld",
+	.id_table = pci_ids,
+	.probe = probe_one,
+};
+
 
 static int __init dtld_ib_init(void)
 {
@@ -134,7 +162,7 @@ static int __init dtld_ib_init(void)
 		ib_dealloc_device(&dtld->ib_dev);
 	}
 		
-	return 0;
+	return pci_register_driver(&pci_driver);
 }
 
 static void __exit dtld_ib_cleanup(void)
