@@ -428,6 +428,128 @@ static void prog_irq_msix_channel(struct xdma_dev *xdev, bool clear)
 	}
 }
 
+static irqreturn_t user_irq_service(int irq, struct xdma_user_irq *user_irq)
+{
+	unsigned long flags;
+
+	if (!user_irq) {
+		pr_err("Invalid user_irq\n");
+		return IRQ_NONE;
+	}
+
+	if (user_irq->handler)
+		return user_irq->handler(user_irq->user_idx, user_irq->dev);
+
+	spin_lock_irqsave(&(user_irq->events_lock), flags);
+	if (!user_irq->events_irq) {
+		user_irq->events_irq = 1;
+		wake_up_interruptible(&(user_irq->events_wq));
+	}
+	spin_unlock_irqrestore(&(user_irq->events_lock), flags);
+
+	return IRQ_HANDLED;
+}
+
+/*
+ * xdma_isr() - Interrupt handler
+ *
+ * @dev_id pointer to xdma_dev
+ */
+static irqreturn_t xdma_isr(int irq, void *dev_id)
+{
+	u32 ch_irq;
+	u32 user_irq;
+	u32 mask;
+	struct xdma_dev *xdev;
+	struct interrupt_regs *irq_regs;
+
+	dbg_irq("(irq=%d, dev 0x%p) <<<< ISR.\n", irq, dev_id);
+	if (!dev_id) {
+		pr_err("Invalid dev_id on irq line %d\n", irq);
+		return -IRQ_NONE;
+	}
+	xdev = (struct xdma_dev *)dev_id;
+
+	if (!xdev) {
+		WARN_ON(!xdev);
+		dbg_irq("%s(irq=%d) xdev=%p ??\n", __func__, irq, xdev);
+		return IRQ_NONE;
+	}
+
+	irq_regs = (struct interrupt_regs *)(xdev->bar[xdev->config_bar_idx] +
+					     XDMA_OFS_INT_CTRL);
+
+	/* read channel interrupt requests */
+	ch_irq = read_register(&irq_regs->channel_int_request);
+	dbg_irq("ch_irq = 0x%08x\n", ch_irq);
+
+	/*
+	 * disable all interrupts that fired; these are re-enabled individually
+	 * after the causing module has been fully serviced.
+	 */
+	if (ch_irq)
+		channel_interrupts_disable(xdev, ch_irq);
+
+	/* read user interrupts - this read also flushes the above write */
+	user_irq = read_register(&irq_regs->user_int_request);
+	dbg_irq("user_irq = 0x%08x\n", user_irq);
+
+	if (user_irq) {
+		int user = 0;
+		u32 mask = 1;
+		int max = xdev->user_max;
+
+		for (; user < max && user_irq; user++, mask <<= 1) {
+			if (user_irq & mask) {
+				user_irq &= ~mask;
+				user_irq_service(irq, &xdev->user_irq[user]);
+			}
+		}
+	}
+
+	mask = ch_irq & xdev->mask_irq_h2c;
+	if (mask) {
+		int channel = 0;
+		int max = xdev->h2c_channel_max;
+
+		/* iterate over H2C (PCIe read) */
+		for (channel = 0; channel < max && mask; channel++) {
+			struct xdma_engine *engine = &xdev->engine_h2c[channel];
+
+			/* engine present and its interrupt fired? */
+			if ((engine->irq_bitmask & mask) &&
+			    (engine->magic == MAGIC_ENGINE)) {
+				mask &= ~engine->irq_bitmask;
+				dbg_tfr("schedule_work, %s.\n", engine->name);
+				schedule_work(&engine->work);
+			}
+		}
+	}
+
+	mask = ch_irq & xdev->mask_irq_c2h;
+	if (mask) {
+		int channel = 0;
+		int max = xdev->c2h_channel_max;
+
+		/* iterate over C2H (PCIe write) */
+		for (channel = 0; channel < max && mask; channel++) {
+			struct xdma_engine *engine = &xdev->engine_c2h[channel];
+
+			/* engine present and its interrupt fired? */
+			if ((engine->irq_bitmask & mask) &&
+			    (engine->magic == MAGIC_ENGINE)) {
+				mask &= ~engine->irq_bitmask;
+				dbg_tfr("schedule_work, %s.\n", engine->name);
+				schedule_work(&engine->work);
+			}
+		}
+	}
+
+	xdev->irq_count++;
+	return IRQ_HANDLED;
+}
+
+
 static int irq_msi_setup(struct xdma_dev *xdev, struct pci_dev *pdev)
 {
 	int rv;
@@ -557,6 +679,7 @@ static int irq_setup(struct xdma_dev *xdev, struct pci_dev *pdev)
 
 		return 0;
 	} else if (xdev->msi_enabled)
+        // FIXME: 默认路径
 		return irq_msi_setup(xdev, pdev);
     
 	return irq_legacy_setup(xdev, pdev);
