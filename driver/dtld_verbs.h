@@ -20,6 +20,11 @@ struct dtld_dev {
 	struct dtld_port		port;
 };
 
+struct dtld_ucontext {
+	struct ib_ucontext ibuc;
+	// struct rxe_pool_elem	elem;
+};
+
 static inline struct dtld_dev *dtld_from_ibdev(struct ib_device *dev)
 {
 	return dev ? container_of(dev, struct dtld_dev, ib_dev) : NULL;

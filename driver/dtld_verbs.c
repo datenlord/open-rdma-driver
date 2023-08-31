@@ -105,20 +105,22 @@ static int dtld_query_port(struct ib_device *dev,
 // 	return IB_LINK_LAYER_ETHERNET;
 // }
 
-// static int dtld_alloc_ucontext(struct ib_ucontext *ibuc, struct ib_udata *udata)
-// {
-// 	struct dtld_dev *rxe = dtld_from_ibdev(ibuc->device);
-// 	struct dtld_ucontext *uc = to_ruc(ibuc);
+static int dtld_alloc_ucontext(struct ib_ucontext *ibuc, struct ib_udata *udata)
+{
+	// struct dtld_dev *rxe = dtld_from_ibdev(ibuc->device);
+	// struct dtld_ucontext *uc = to_ruc(ibuc);
 
-// 	return dtld_add_to_pool(&rxe->uc_pool, uc);
-// }
+	// return dtld_add_to_pool(&rxe->uc_pool, uc);
 
-// static void dtld_dealloc_ucontext(struct ib_ucontext *ibuc)
-// {
-// 	struct dtld_ucontext *uc = to_ruc(ibuc);
+	return 0;
+}
 
-// 	dtld_put(uc);
-// }
+static void dtld_dealloc_ucontext(struct ib_ucontext *ibuc)
+{
+	// struct dtld_ucontext *uc = to_ruc(ibuc);
+
+	// dtld_put(uc);
+}
 
 static int dtld_port_immutable(struct ib_device *dev, u32 port_num,
 			      struct ib_port_immutable *immutable)
@@ -1031,7 +1033,7 @@ static const struct ib_device_ops dtld_dev_ops = {
 	// .alloc_mr = dtld_alloc_mr,
 	// .alloc_mw = dtld_alloc_mw,
 	// .alloc_pd = dtld_alloc_pd,
-	// .alloc_ucontext = dtld_alloc_ucontext,
+	.alloc_ucontext = dtld_alloc_ucontext,
 	// .attach_mcast = dtld_attach_mcast,
 	// .create_ah = dtld_create_ah,
 	// .create_cq = dtld_create_cq,
@@ -1041,7 +1043,7 @@ static const struct ib_device_ops dtld_dev_ops = {
 	// .dealloc_driver = dtld_dealloc,
 	// .dealloc_mw = dtld_dealloc_mw,
 	// .dealloc_pd = dtld_dealloc_pd,
-	// .dealloc_ucontext = dtld_dealloc_ucontext,
+	.dealloc_ucontext = dtld_dealloc_ucontext,
 	// .dereg_mr = dtld_dereg_mr,
 	// .destroy_ah = dtld_destroy_ah,
 	// .destroy_cq = dtld_destroy_cq,
@@ -1081,7 +1083,7 @@ static const struct ib_device_ops dtld_dev_ops = {
 	// INIT_RDMA_OBJ_SIZE(ib_pd, dtld_pd, ibpd),
 	// INIT_RDMA_OBJ_SIZE(ib_qp, dtld_qp, ibqp),
 	// INIT_RDMA_OBJ_SIZE(ib_srq, dtld_srq, ibsrq),
-	// INIT_RDMA_OBJ_SIZE(ib_ucontext, dtld_ucontext, ibuc),
+	INIT_RDMA_OBJ_SIZE(ib_ucontext, dtld_ucontext, ibuc),
 	// INIT_RDMA_OBJ_SIZE(ib_mw, dtld_mw, ibmw),
 };
 

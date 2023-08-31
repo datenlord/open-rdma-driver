@@ -1,6 +1,9 @@
 KERNEL_SRC_DIR ?= /linux-src
 
-.PHONY: driver user gdb
+.PHONY: kernel driver user gdb
+
+kernel:
+	$(MAKE) -C $(KERNEL_SRC_DIR)
 
 driver:
 	$(MAKE) -C $(KERNEL_SRC_DIR) M=$(PWD)/driver

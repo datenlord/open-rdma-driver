@@ -25,21 +25,5 @@
                 
             ],
         },
-        
-        
-        
-        
-    {
-        "debugger_args": ["-x", "${workspaceFolder}/scripts/gdb_init_cmd.txt"],
-        "type": "gdb",
-        "request": "attach",
-        "name": "Attach to gdbserver",
-        "target": ":1234",
-        "remote": true,
-        "cwd": "/linux-src",
-        "valuesFormatting": "parseText",
-        "stopAtEntry": true,
-        
-    }
     ]
 }
