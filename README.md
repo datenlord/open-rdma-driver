@@ -35,13 +35,16 @@ in the qemu, there are some pre-mounted folders:
 
 * the following path is added to the `PATH` in the qemu's guest OS, so we can run scripts or RDMA user space tools easily.
     * `/host/workspaces/dtld-rdma-driver/scripts/for_qemu`
-    * `/host/workspaces/rdma-core/build/bin`
+    * `/host/workspaces/dtld-rdma-driver/rdma-core/build/bin`
 
 
 #### How to debug the kernel?
 there is out-of-the-box support for debugging. the gdb config has been set for you, you need to first run `make qemu` and then:
 * you can run `make gdb` to launch a gdb in commandline and auto connect to qemu
 * you can press F5 in vscode, the `launch.json` is already written for you to attach to the qemu.
+    * it seems that you should start the debubgger first, then insert kernel module. otherwise, it seems the debugger won't find the kernel module.
+
 
 #### language server?
 we use `clangd`, you can run `make lsp` to generate `compile_commands.json` for clangd to use.
+you may need to use `ctrl + shift + p` to show the vscode's command panel and select `clangd: download language server` to make the clangd extension work.
