@@ -451,6 +451,125 @@ static irqreturn_t user_irq_service(int irq, struct xdma_user_irq *user_irq)
 }
 
 /*
+ * xdma_channel_irq() - Interrupt handler for channel interrupts in MSI-X mode
+ *
+ * @dev_id pointer to xdma_dev
+ */
+static irqreturn_t xdma_channel_irq(int irq, void *dev_id)
+{
+	struct xdma_dev *xdev;
+	struct xdma_engine *engine;
+	struct interrupt_regs *irq_regs;
+
+	dbg_irq("(irq=%d) <<<< INTERRUPT service ROUTINE\n", irq);
+	if (!dev_id) {
+		pr_err("Invalid dev_id on irq line %d\n", irq);
+		return IRQ_NONE;
+	}
+
+	engine = (struct xdma_engine *)dev_id;
+	xdev = engine->xdev;
+
+	if (!xdev) {
+		WARN_ON(!xdev);
+		dbg_irq("%s(irq=%d) xdev=%p ??\n", __func__, irq, xdev);
+		return IRQ_NONE;
+	}
+
+	irq_regs = (struct interrupt_regs *)(xdev->bar[xdev->config_bar_idx] +
+					     XDMA_OFS_INT_CTRL);
+
+	/* Disable the interrupt for this engine */
+	write_register(
+		engine->interrupt_enable_mask_value,
+		&engine->regs->interrupt_enable_mask_w1c,
+		(unsigned long)(&engine->regs->interrupt_enable_mask_w1c) -
+			(unsigned long)(&engine->regs));
+	/* Dummy read to flush the above write */
+	read_register(&irq_regs->channel_int_pending);
+	/* Schedule the bottom half */
+	schedule_work(&engine->work);
+
+	/*
+	 * need to protect access here if multiple MSI-X are used for
+	 * user interrupts
+	 */
+	xdev->irq_count++;
+	return IRQ_HANDLED;
+}
+
+
+
+static int map_single_bar(struct xdma_dev *xdev, struct pci_dev *dev, int idx)
+{
+	resource_size_t bar_start;
+	resource_size_t bar_len;
+	resource_size_t map_len;
+
+	bar_start = pci_resource_start(dev, idx);
+	bar_len = pci_resource_len(dev, idx);
+	map_len = bar_len;
+
+	xdev->bar[idx] = NULL;
+
+	/* do not map BARs with length 0. Note that start MAY be 0! */
+	if (!bar_len) {
+		//pr_info("BAR #%d is not present - skipping\n", idx);
+		return 0;
+	}
+
+	/* BAR size exceeds maximum desired mapping? */
+	if (bar_len > INT_MAX) {
+		pr_info("Limit BAR %d mapping from %llu to %d bytes\n", idx,
+			(u64)bar_len, INT_MAX);
+		map_len = (resource_size_t)INT_MAX;
+	}
+	/*
+	 * map the full device memory or IO region into kernel virtual
+	 * address space
+	 */
+	dbg_init("BAR%d: %llu bytes to be mapped.\n", idx, (u64)map_len);
+	xdev->bar[idx] = pci_iomap(dev, idx, map_len);
+
+	if (!xdev->bar[idx]) {
+		pr_info("Could not map BAR %d.\n", idx);
+		return -1;
+	}
+
+	pr_info("BAR%d at 0x%llx mapped at 0x%p, length=%llu(/%llu)\n", idx,
+		(u64)bar_start, xdev->bar[idx], (u64)map_len, (u64)bar_len);
+
+	return (int)map_len;
+}
+
+static int is_config_bar(struct xdma_dev *xdev, int idx)
+{
+	u32 irq_id = 0;
+	u32 cfg_id = 0;
+	int flag = 0;
+	u32 mask = 0xffff0000; /* Compare only XDMA ID's not Version number */
+	struct interrupt_regs *irq_regs =
+		(struct interrupt_regs *)(xdev->bar[idx] + XDMA_OFS_INT_CTRL);
+	struct config_regs *cfg_regs =
+		(struct config_regs *)(xdev->bar[idx] + XDMA_OFS_CONFIG);
+
+	irq_id = read_register(&irq_regs->identifier);
+	cfg_id = read_register(&cfg_regs->identifier);
+
+	if (((irq_id & mask) == IRQ_BLOCK_ID) &&
+	    ((cfg_id & mask) == CONFIG_BLOCK_ID)) {
+		dbg_init("BAR %d is the XDMA config BAR\n", idx);
+		flag = 1;
+	} else {
+		dbg_init("BAR %d is NOT the XDMA config BAR: 0x%x, 0x%x.\n",
+			 idx, irq_id, cfg_id);
+		flag = 0;
+	}
+
+	return flag;
+}
+
+/*
  * xdma_isr() - Interrupt handler
  *
  * @dev_id pointer to xdma_dev
@@ -667,16 +786,17 @@ static int irq_setup(struct xdma_dev *xdev, struct pci_dev *pdev)
 	pci_keep_intx_enabled(pdev);
 
 	if (xdev->msix_enabled) {
-		int rv = irq_msix_channel_setup(xdev);
+		// TDO
+	// 	int rv = irq_msix_channel_setup(xdev);
 
-		if (rv)
-			return rv;
-		rv = irq_msix_user_setup(xdev);
-		if (rv)
-			return rv;
-		prog_irq_msix_channel(xdev, 0);
-		prog_irq_msix_user(xdev, 0);
-
+	// 	if (rv)
+	// 		return rv;
+	// 	rv = irq_msix_user_setup(xdev);
+	// 	if (rv)
+	// 		return rv;
+	// 	prog_irq_msix_channel(xdev, 0);
+	// 	prog_irq_msix_user(xdev, 0);
+		BUG();
 		return 0;
 	} else if (xdev->msi_enabled)
         // FIXME: 默认路径
@@ -814,12 +934,13 @@ static int map_bars(struct xdma_dev *xdev, struct pci_dev *dev)
 
 fail:
 	/* unwind; unmap any BARs that we did map */
-	unmap_bars(xdev, dev);
+	// TODO: unmap_bars(xdev, dev);
 	return rv;
 }
 
 static int set_dma_mask(struct pci_dev *pdev)
 {
+	int ret;
 	if (!pdev) {
 		pr_err("Invalid pdev\n");
 		return -EINVAL;
@@ -827,25 +948,343 @@ static int set_dma_mask(struct pci_dev *pdev)
 
 	dbg_init("sizeof(dma_addr_t) == %ld\n", sizeof(dma_addr_t));
 	/* 64-bit addressing capability for XDMA? */
-	if (!pci_set_dma_mask(pdev, DMA_BIT_MASK(64))) {
-		/* query for DMA transfer */
-		/* @see Documentation/DMA-mapping.txt */
-		dbg_init("pci_set_dma_mask()\n");
-		/* use 64-bit DMA */
-		dbg_init("Using a 64-bit DMA mask.\n");
-		pci_set_consistent_dma_mask(pdev, DMA_BIT_MASK(64));
-	} else if (!pci_set_dma_mask(pdev, DMA_BIT_MASK(32))) {
-		dbg_init("Could not set 64-bit DMA mask.\n");
-		pci_set_consistent_dma_mask(pdev, DMA_BIT_MASK(32));
-		/* use 32-bit DMA */
-		dbg_init("Using a 32-bit DMA mask.\n");
-	} else {
+	ret = dma_set_mask_and_coherent(&pdev->dev, DMA_BIT_MASK(64));
+	if (ret){
+		ret = dma_set_mask_and_coherent(&pdev->dev, DMA_BIT_MASK(32));
+	}
+	if (ret){
 		dbg_init("No suitable DMA possible.\n");
+		return -EINVAL;		
+	}
+	return 0;
+}
+
+static int get_engine_channel_id(struct engine_regs *regs)
+{
+	int value;
+
+	if (!regs) {
+		pr_err("Invalid engine registers\n");
 		return -EINVAL;
+	}
+
+	value = read_register(&regs->identifier);
+
+	return (value & 0x00000f00U) >> 8;
+}
+
+static int get_engine_id(struct engine_regs *regs)
+{
+	int value;
+
+	if (!regs) {
+		pr_err("Invalid engine registers\n");
+		return -EINVAL;
+	}
+
+	value = read_register(&regs->identifier);
+	return (value & 0xffff0000U) >> 16;
+}
+
+/**
+ * engine_service() - service an SG DMA engine
+ *
+ * must be called with engine->lock already acquired
+ *
+ * @engine pointer to struct xdma_engine
+ *
+ */
+static int engine_service(struct xdma_engine *engine, int desc_writeback)
+{
+// 	struct xdma_transfer *transfer = NULL;
+// 	u32 desc_count = desc_writeback & WB_COUNT_MASK;
+// 	u32 err_flag = desc_writeback & WB_ERR_MASK;
+// 	int rv = 0;
+
+// 	if (!engine) {
+// 		pr_err("dma engine NULL\n");
+// 		return -EINVAL;
+// 	}
+
+// 	/* Service the engine */
+// 	if (!engine->running) {
+// 		dbg_tfr("Engine was not running!!! Clearing status\n");
+// 		rv = engine_status_read(engine, 1, 0);
+// 		if (rv < 0) {
+// 			pr_err("%s failed to read status\n", engine->name);
+// 			return rv;
+// 		}
+// 		return 0;
+// 	}
+
+// 	/*
+// 	 * If called by the ISR or polling detected an error, read and clear
+// 	 * engine status. For polled mode descriptor completion, this read is
+// 	 * unnecessary and is skipped to reduce latency
+// 	 */
+// 	if ((desc_count == 0) || (err_flag != 0)) {
+// 		rv = engine_status_read(engine, 1, 0);
+// 		if (rv < 0) {
+// 			pr_err("Failed to read engine status\n");
+// 			return rv;
+// 		}
+// 	}
+
+// 	/*
+// 	 * engine was running but is no longer busy, or writeback occurred,
+// 	 * shut down
+// 	 */
+// 	if ((engine->running && !(engine->status & XDMA_STAT_BUSY)) ||
+// 	    (!engine->eop_flush && desc_count != 0)) {
+// 		rv = engine_service_shutdown(engine);
+// 		if (rv < 0) {
+// 			pr_err("Failed to shutdown engine\n");
+// 			return rv;
+// 		}
+// 	}
+
+// 	/*
+// 	 * If called from the ISR, or if an error occurred, the descriptor
+// 	 * count will be zero.  In this scenario, read the descriptor count
+// 	 * from HW.  In polled mode descriptor completion, this read is
+// 	 * unnecessary and is skipped to reduce latency
+// 	 */
+// 	if (!desc_count)
+// 		desc_count = read_register(&engine->regs->completed_desc_count);
+// 	dbg_tfr("%s wb 0x%x, desc_count %u, err %u, dequeued %u.\n",
+// 		engine->name, desc_writeback, desc_count, err_flag,
+// 		engine->desc_dequeued);
+
+// 	if (!desc_count)
+// 		goto done;
+
+// 	/* transfers on queue? */
+// 	if (!list_empty(&engine->transfer_list)) {
+// 		/* pick first transfer on queue (was submitted to the engine) */
+// 		transfer = list_entry(engine->transfer_list.next,
+// 				      struct xdma_transfer, entry);
+
+// 		dbg_tfr("head of queue transfer 0x%p has %d descriptors\n",
+// 			transfer, (int)transfer->desc_num);
+
+// 		dbg_tfr("Engine completed %d desc, %d not yet dequeued\n",
+// 			(int)desc_count,
+// 			(int)desc_count - engine->desc_dequeued);
+
+// 		rv = engine_service_perf(engine, desc_count);
+// 		if (rv < 0) {
+// 			pr_err("Failed to service descriptors\n");
+// 			return rv;
+// 		}
+// 	}
+
+// 	/* account for already dequeued transfers during this engine run */
+// 	desc_count -= engine->desc_dequeued;
+
+// 	/* Process all but the last transfer */
+// 	transfer = engine_service_transfer_list(engine, transfer, &desc_count);
+
+// 	/*
+// 	 * Process final transfer - includes checks of number of descriptors to
+// 	 * detect faulty completion
+// 	 */
+// 	transfer = engine_service_final_transfer(engine, transfer, &desc_count);
+
+// 	/* Restart the engine following the servicing */
+// 	if (!engine->eop_flush) {
+// 		rv = engine_service_resume(engine);
+// 		if (rv < 0)
+// 			pr_err("Failed to resume engine\n");
+// 	}
+
+// done:
+// 	/* If polling detected an error, signal to the caller */
+// 	return err_flag ? -1 : 0;
+	//TODO: engine
+	return 0;
+}
+
+/* engine_service_work */
+static void engine_service_work(struct work_struct *work)
+{
+	struct xdma_engine *engine;
+	unsigned long flags;
+	int rv;
+
+	engine = container_of(work, struct xdma_engine, work);
+	if (engine->magic != MAGIC_ENGINE) {
+		pr_err("%s has invalid magic number %lx\n", engine->name,
+		       engine->magic);
+		return;
+	}
+
+	/* lock the engine */
+	spin_lock_irqsave(&engine->lock, flags);
+
+	dbg_tfr("engine_service() for %s engine %p\n", engine->name, engine);
+	rv = engine_service(engine, 0);
+	if (rv < 0) {
+		pr_err("Failed to service engine\n");
+		goto unlock;
+	}
+
+	/* re-enable interrupts for this engine */
+	if (engine->xdev->msix_enabled) {
+		write_register(
+			engine->interrupt_enable_mask_value,
+			&engine->regs->interrupt_enable_mask_w1s,
+			(unsigned long)(&engine->regs
+						 ->interrupt_enable_mask_w1s) -
+				(unsigned long)(&engine->regs));
+	} else
+		channel_interrupts_enable(engine->xdev, engine->irq_bitmask);
+
+	/* unlock the engine */
+unlock:
+	spin_unlock_irqrestore(&engine->lock, flags);
+}
+
+static int engine_alloc_resource(struct xdma_engine *engine)
+{
+	//TODO: engine
+	return 0;
+}
+
+/* engine_create() - Create an SG DMA engine bookkeeping data structure
+ *
+ * An SG DMA engine consists of the resources for a single-direction transfer
+ * queue; the SG DMA hardware, the software queue and interrupt handling.
+ *
+ * @dev Pointer to pci_dev
+ * @offset byte address offset in BAR[xdev->config_bar_idx] resource for the
+ * SG DMA * controller registers.
+ * @dir: DMA_TO/FROM_DEVICE
+ * @streaming Whether the engine is attached to AXI ST (rather than MM)
+ */
+static int engine_init_regs(struct xdma_engine *engine)
+{
+	//TODO: engine
+	return 0;
+}
+static int engine_init(struct xdma_engine *engine, struct xdma_dev *xdev,
+		       int offset, enum dma_data_direction dir, int channel)
+{
+	int rv;
+	u32 val;
+
+	dbg_init("channel %d, offset 0x%x, dir %d.\n", channel, offset, dir);
+
+	/* set magic */
+	engine->magic = MAGIC_ENGINE;
+
+	engine->channel = channel;
+
+	/* engine interrupt request bit */
+	engine->irq_bitmask = (1 << XDMA_ENG_IRQ_NUM) - 1;
+	engine->irq_bitmask <<= (xdev->engines_num * XDMA_ENG_IRQ_NUM);
+	engine->bypass_offset = xdev->engines_num * BYPASS_MODE_SPACING;
+
+	/* parent */
+	engine->xdev = xdev;
+	/* register address */
+	engine->regs = (xdev->bar[xdev->config_bar_idx] + offset);
+	// engine->sgdma_regs = xdev->bar[xdev->config_bar_idx] + offset +
+	// 		     SGDMA_OFFSET_FROM_CHANNEL;
+	val = read_register(&engine->regs->identifier);
+	if (val & 0x8000U)
+		engine->streaming = 1;
+
+	/* remember SG DMA direction */
+	engine->dir = dir;
+	snprintf(engine->name, sizeof(engine->name), "%d-%s%d-%s", xdev->idx,
+		(dir == DMA_TO_DEVICE) ? "H2C" : "C2H", channel,
+		engine->streaming ? "ST" : "MM");
+
+	// if (enable_st_c2h_credit && engine->streaming &&
+	//     engine->dir == DMA_FROM_DEVICE)
+	//     	engine->desc_max = XDMA_ENGINE_CREDIT_XFER_MAX_DESC;
+	// else
+	engine->desc_max = XDMA_ENGINE_XFER_MAX_DESC;
+
+	dbg_init("engine %p name %s irq_bitmask=0x%08x\n", engine, engine->name,
+		 (int)engine->irq_bitmask);
+
+	/* initialize the deferred work for transfer completion */
+	INIT_WORK(&engine->work, engine_service_work);
+
+	if (dir == DMA_TO_DEVICE)
+		xdev->mask_irq_h2c |= engine->irq_bitmask;
+	else
+		xdev->mask_irq_c2h |= engine->irq_bitmask;
+	xdev->engines_num++;
+
+	rv = engine_alloc_resource(engine);
+	if (rv)
+		return rv;
+
+	rv = engine_init_regs(engine);
+	if (rv)
+		return rv;
+
+	// TODO: poll mode
+	// if (poll_mode)
+	// 	xdma_thread_add_work(engine);
+
+	return 0;
+}
+
+static int probe_for_engine(struct xdma_dev *xdev, enum dma_data_direction dir,
+			    int channel)
+{
+	struct engine_regs *regs;
+	int offset = channel * CHANNEL_SPACING;
+	u32 engine_id;
+	u32 engine_id_expected;
+	u32 channel_id;
+	struct xdma_engine *engine;
+	int rv;
+
+	/* register offset for the engine */
+	/* read channels at 0x0000, write channels at 0x1000,
+	 * channels at 0x100 interval
+	 */
+	if (dir == DMA_TO_DEVICE) {
+		engine_id_expected = XDMA_ID_H2C;
+		engine = &xdev->engine_h2c[channel];
+	} else {
+		offset += H2C_CHANNEL_OFFSET;
+		engine_id_expected = XDMA_ID_C2H;
+		engine = &xdev->engine_c2h[channel];
+	}
+
+	regs = xdev->bar[xdev->config_bar_idx] + offset;
+	engine_id = get_engine_id(regs);
+	channel_id = get_engine_channel_id(regs);
+
+	if ((engine_id != engine_id_expected) || (channel_id != channel)) {
+		dbg_init(
+			"%s %d engine, reg off 0x%x, id mismatch 0x%x,0x%x,exp 0x%x,0x%x, SKIP.\n",
+			dir == DMA_TO_DEVICE ? "H2C" : "C2H", channel, offset,
+			engine_id, channel_id, engine_id_expected,
+			channel_id != channel);
+		return -EINVAL;
+	}
+
+	dbg_init("found AXI %s %d engine, reg. off 0x%x, id 0x%x,0x%x.\n",
+		 dir == DMA_TO_DEVICE ? "H2C" : "C2H", channel, offset,
+		 engine_id, channel_id);
+
+	/* allocate and initialize engine */
+	rv = engine_init(engine, xdev, offset, dir, channel);
+	if (rv != 0) {
+		pr_info("failed to create AXI %s %d engine.\n",
+			dir == DMA_TO_DEVICE ? "H2C" : "C2H", channel);
+		return rv;
 	}
 
 	return 0;
 }
+
 
 static int probe_engines(struct xdma_dev *xdev)
 {
@@ -873,6 +1312,19 @@ static int probe_engines(struct xdma_dev *xdev)
 	xdev->c2h_channel_max = i;
 
 	return 0;
+}
+
+static void pci_enable_capability(struct pci_dev *pdev, int cap)
+{
+	u16 v;
+	int pos;
+
+	pos = pci_pcie_cap(pdev);
+	if (pos > 0) {
+		pci_read_config_word(pdev, pos + PCI_EXP_DEVCTL, &v);
+		v |= cap;
+		pci_write_config_word(pdev, pos + PCI_EXP_DEVCTL, v);
+	}
 }
 
 void *xdma_device_open(const char *mname, struct pci_dev *pdev, int *user_max,
@@ -993,4 +1445,22 @@ err_enable:
 free_xdev:
 	kfree(xdev);
 	return NULL;
+}
+
+int xdma_user_isr_enable(void *dev_hndl, unsigned int mask)
+{
+	struct xdma_dev *xdev = (struct xdma_dev *)dev_hndl;
+
+	if (!dev_hndl)
+		return -EINVAL;
+
+	// if (debug_check_dev_hndl(__func__, xdev->pdev, dev_hndl) < 0)
+		// return -EINVAL;
+
+	xdev->mask_irq_user |= mask;
+	/* enable user interrupts */
+	user_interrupts_enable(xdev, mask);
+	read_interrupts(xdev);
+
+	return 0;
 }

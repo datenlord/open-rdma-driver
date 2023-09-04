@@ -8,6 +8,8 @@
 #include <linux/workqueue.h>
 #include <linux/interrupt.h>
 #include <linux/dma-direction.h>
+#include <linux/dma-mapping.h>
+
 
 #define HAS_SWAKE_UP_ONE (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 19, 0))
 #define HAS_SWAKE_UP (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 6, 0))
@@ -22,6 +24,21 @@
 #define MAX_USER_IRQ 16
 #define XDMA_BAR_SIZE (0x8000UL)
 #define XDMA_OFS_INT_CTRL	(0x2000UL)
+#define XDMA_OFS_CONFIG		(0x3000UL)
+#define MAGIC_ENGINE	0xEEEEEEEEUL
+
+#define IRQ_BLOCK_ID 0x1fc20000UL
+#define CONFIG_BLOCK_ID 0x1fc30000U
+
+#define CHANNEL_SPACING 0x100
+#define XDMA_ID_H2C 0x1fc0U
+#define XDMA_ID_C2H 0x1fc1U
+#define H2C_CHANNEL_OFFSET 0x1000
+/* maximum number of desc per transfer request */
+#define XDMA_ENGINE_XFER_MAX_DESC		0x800
+#define XDMA_ENG_IRQ_NUM	(1)
+#define BYPASS_MODE_SPACING 0x0100
+
 
 
 #ifdef __LIBXDMA_DEBUG__
@@ -58,6 +75,27 @@ enum shutdown_state {
 	ENGINE_SHUTDOWN_IDLE = 2	/* engine has shutdown and is idle */
 };
 
+struct xdma_io_cb {
+	void __user *buf;
+	size_t len;
+	void *private;
+	unsigned int pages_nr;
+	struct page **pages;
+	/** total data size */
+	unsigned int count;
+	/** MM only, DDR/BRAM memory addr */
+	u64 ep_addr;
+	/** write: if write to the device */
+	struct xdma_request_cb *req;
+	u8 write:1;
+	void (*io_done)(unsigned long cb_hndl, int err);
+};
+
+struct config_regs {
+	u32 identifier;
+	u32 reserved_1[4];
+	u32 msi_enable;
+};
 
 /**
  * SG DMA Controller status and control registers
@@ -312,5 +350,7 @@ static inline void xdma_device_flag_clear(struct xdma_dev *xdev, unsigned int f)
 
 void *xdma_device_open(const char *mname, struct pci_dev *pdev, int *user_max,
 		       int *h2c_channel_max, int *c2h_channel_max) __attribute__((used));
+
+int xdma_user_isr_enable(void *dev_hndl, unsigned int mask);
 
 #endif

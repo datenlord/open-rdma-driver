@@ -125,15 +125,81 @@ void dtld_set_mtu(struct dtld_dev *dtld, unsigned int ndev_mtu)
 
 static int probe_one(struct pci_dev *pdev, const struct pci_device_id *id)
 {
+	int rv = 0;
 	struct xdma_pci_dev *xpdev = NULL;
-	// struct xdma_dev *xdev;
-	// void *hndl;
+	struct xdma_dev *xdev;
+	void *hndl;
 	xpdev = xpdev_alloc(pdev);
 	if (!xpdev)
 		return -ENOMEM;
-	
-	// hndl = xdma_dev
+
+	hndl = xdma_device_open("xdma", pdev, &xpdev->user_max,
+			&xpdev->h2c_channel_max, &xpdev->c2h_channel_max);
+	if (!hndl) {
+		rv = -EINVAL;
+		goto err_out;
+	}
+
+	if (xpdev->user_max > MAX_USER_IRQ) {
+		pr_err("Maximum users limit reached\n");
+		rv = -EINVAL;
+		goto err_out;
+	}
+
+	if (xpdev->h2c_channel_max > XDMA_CHANNEL_NUM_MAX) {
+		pr_err("Maximun H2C channel limit reached\n");
+		rv = -EINVAL;
+		goto err_out;
+	}
+
+	if (xpdev->c2h_channel_max > XDMA_CHANNEL_NUM_MAX) {
+		pr_err("Maximun C2H channel limit reached\n");
+		rv = -EINVAL;
+		goto err_out;
+	}
+
+	if (!xpdev->h2c_channel_max && !xpdev->c2h_channel_max)
+		pr_warn("NO engine found!\n");
+
+	if (xpdev->user_max) {
+		u32 mask = (1 << (xpdev->user_max + 1)) - 1;
+
+		rv = xdma_user_isr_enable(hndl, mask);
+		if (rv)
+			goto err_out;
+	}
+
+	/* make sure no duplicate */
+	// xdev = xdev_find_by_pdev(pdev);
+	// if (!xdev) {
+	// 	pr_warn("NO xdev found!\n");
+	// 	rv =  -EINVAL;
+	// 	goto err_out;
+	// }
+
+	// if (hndl != xdev) {
+	// 	pr_err("xdev handle mismatch\n");
+	// 	rv =  -EINVAL;
+	// 	goto err_out;
+	// }
+
+	// pr_info("%s xdma%d, pdev 0x%p, xdev 0x%p, 0x%p, usr %d, ch %d,%d.\n",
+	// 	dev_name(&pdev->dev), xdev->idx, pdev, xpdev, xdev,
+	// 	xpdev->user_max, xpdev->h2c_channel_max,
+	// 	xpdev->c2h_channel_max);
+
+	// xpdev->xdev = hndl;
+
+	// TODO: create interface
+	// rv = xpdev_create_interfaces(xpdev);
+	// if (rv)
+	// 	goto err_out;
+
+	dev_set_drvdata(&pdev->dev, xpdev);
 	return 0;
+	err_out:
+		// TODO: release
+		return rv;
 }
 
 static struct pci_driver pci_driver = {
