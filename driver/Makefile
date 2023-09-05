@@ -4,4 +4,6 @@ obj-m += dtld_ib.o
 dtld_ib-y := \
 	dtld.o \
 	dtld_verbs.o \
+	dtld_pool.o \
+	dtld_mr.o \
 

@@ -1,6 +1,7 @@
 
-#include <rdma/ib_verbs.h>
 
+#include <rdma/rdma_netlink.h>
+#include <net/addrconf.h>
 #include "dtld.h"
 
 

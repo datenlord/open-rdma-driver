@@ -141,21 +141,22 @@ static int dtld_port_immutable(struct ib_device *dev, u32 port_num,
 	return 0;
 }
 
-// static int dtld_alloc_pd(struct ib_pd *ibpd, struct ib_udata *udata)
-// {
-// 	struct dtld_dev *rxe = dtld_from_ibdev(ibpd->device);
-// 	struct dtld_pd *pd = to_rpd(ibpd);
+static int dtld_alloc_pd(struct ib_pd *ibpd, struct ib_udata *udata)
+{
+	// struct dtld_dev *rxe = dtld_from_ibdev(ibpd->device);
+	// struct dtld_pd *pd = to_rpd(ibpd);
 
-// 	return dtld_add_to_pool(&rxe->pd_pool, pd);
-// }
+	// return dtld_add_to_pool(&rxe->pd_pool, pd);
+	return 0;
+}
 
-// static int dtld_dealloc_pd(struct ib_pd *ibpd, struct ib_udata *udata)
-// {
-// 	struct dtld_pd *pd = to_rpd(ibpd);
+static int dtld_dealloc_pd(struct ib_pd *ibpd, struct ib_udata *udata)
+{
+	// struct dtld_pd *pd = to_rpd(ibpd);
 
-// 	dtld_put(pd);
-// 	return 0;
-// }
+	// dtld_put(pd);
+	return 0;
+}
 
 // static int dtld_create_ah(struct ib_ah *ibah,
 // 			 struct rdma_ah_init_attr *init_attr,
@@ -906,51 +907,51 @@ static int dtld_port_immutable(struct ib_device *dev, u32 port_num,
 // 	return &mr->ibmr;
 // }
 
-// static struct ib_mr *dtld_reg_user_mr(struct ib_pd *ibpd,
-// 				     u64 start,
-// 				     u64 length,
-// 				     u64 iova,
-// 				     int access, struct ib_udata *udata)
-// {
-// 	int err;
-// 	struct dtld_dev *rxe = dtld_from_ibdev(ibpd->device);
-// 	struct dtld_pd *pd = to_rpd(ibpd);
-// 	struct dtld_mr *mr;
+static struct ib_mr *dtld_reg_user_mr(struct ib_pd *ibpd,
+				     u64 start,
+				     u64 length,
+				     u64 iova,
+				     int access, struct ib_udata *udata)
+{
+	int err;
+	struct dtld_dev *rxe = dtld_from_ibdev(ibpd->device);
+	struct dtld_pd *pd = to_dtld_pd(ibpd);
+	struct dtld_mr *mr;
 
-// 	mr = dtld_alloc(&rxe->mr_pool);
-// 	if (!mr) {
-// 		err = -ENOMEM;
-// 		goto err2;
-// 	}
+	mr = dtld_alloc(&rxe->mr_pool);
+	if (!mr) {
+		err = -ENOMEM;
+		goto err2;
+	}
 
 
-// 	dtld_get(pd);
+	dtld_get(pd);
 
-// 	err = dtld_mr_init_user(pd, start, length, iova, access, mr);
-// 	if (err)
-// 		goto err3;
+	err = dtld_mr_init_user(pd, start, length, iova, access, mr);
+	if (err)
+		goto err3;
 
-// 	return &mr->ibmr;
+	return &mr->ibmr;
 
-// err3:
-// 	dtld_put(pd);
-// 	dtld_put(mr);
-// err2:
-// 	return ERR_PTR(err);
-// }
+err3:
+	dtld_put(pd);
+	dtld_put(mr);
+err2:
+	return ERR_PTR(err);
+}
 
 // static struct ib_mr *dtld_alloc_mr(struct ib_pd *ibpd, enum ib_mr_type mr_type,
 // 				  u32 max_num_sg)
 // {
-// 	struct dtld_dev *rxe = dtld_from_ibdev(ibpd->device);
-// 	struct dtld_pd *pd = to_rpd(ibpd);
+// 	struct dtld_dev *dtld = dtld_from_ibdev(ibpd->device);
+// 	struct dtld_pd *pd = to_dtld_pd(ibpd);
 // 	struct dtld_mr *mr;
 // 	int err;
 
 // 	if (mr_type != IB_MR_TYPE_MEM_REG)
 // 		return ERR_PTR(-EINVAL);
 
-// 	mr = dtld_alloc(&rxe->mr_pool);
+// 	mr = dtld_alloc(&dtld->mr_pool);
 // 	if (!mr) {
 // 		err = -ENOMEM;
 // 		goto err1;
@@ -1032,7 +1033,7 @@ static const struct ib_device_ops dtld_dev_ops = {
 	// .alloc_hw_port_stats = dtld_ib_alloc_hw_port_stats,
 	// .alloc_mr = dtld_alloc_mr,
 	// .alloc_mw = dtld_alloc_mw,
-	// .alloc_pd = dtld_alloc_pd,
+	.alloc_pd = dtld_alloc_pd,
 	.alloc_ucontext = dtld_alloc_ucontext,
 	// .attach_mcast = dtld_attach_mcast,
 	// .create_ah = dtld_create_ah,
@@ -1042,7 +1043,7 @@ static const struct ib_device_ops dtld_dev_ops = {
 	// .create_user_ah = dtld_create_ah,
 	// .dealloc_driver = dtld_dealloc,
 	// .dealloc_mw = dtld_dealloc_mw,
-	// .dealloc_pd = dtld_dealloc_pd,
+	.dealloc_pd = dtld_dealloc_pd,
 	.dealloc_ucontext = dtld_dealloc_ucontext,
 	// .dereg_mr = dtld_dereg_mr,
 	// .destroy_ah = dtld_destroy_ah,
@@ -1074,7 +1075,7 @@ static const struct ib_device_ops dtld_dev_ops = {
 	.query_port = dtld_query_port,
 	// .query_qp = dtld_query_qp,
 	// .query_srq = dtld_query_srq,
-	// .reg_user_mr = dtld_reg_user_mr,
+	.reg_user_mr = dtld_reg_user_mr,
 	// .req_notify_cq = dtld_req_notify_cq,
 	// .resize_cq = dtld_resize_cq,
 
