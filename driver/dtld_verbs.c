@@ -395,51 +395,51 @@ static int dtld_dealloc_pd(struct ib_pd *ibpd, struct ib_udata *udata)
 // 	return err;
 // }
 
-// static int dtld_create_qp(struct ib_qp *ibqp, struct ib_qp_init_attr *init,
-// 			 struct ib_udata *udata)
-// {
-// 	int err;
-// 	struct dtld_dev *rxe = dtld_from_ibdev(ibqp->device);
-// 	struct dtld_pd *pd = to_rpd(ibqp->pd);
-// 	struct dtld_qp *qp = to_rqp(ibqp);
-// 	struct dtld_create_qp_resp __user *uresp = NULL;
+static int dtld_create_qp(struct ib_qp *ibqp, struct ib_qp_init_attr *init,
+			 struct ib_udata *udata)
+{
+	int err;
+	struct dtld_dev *dtld = dtld_from_ibdev(ibqp->device);
+	struct dtld_pd *pd = to_dtld_pd(ibqp->pd);
+	struct dtld_qp *qp = to_dtld_qp(ibqp);
+	struct dtld_create_qp_resp __user *uresp = NULL;
 
-// 	if (udata) {
-// 		if (udata->outlen < sizeof(*uresp))
-// 			return -EINVAL;
-// 		uresp = udata->outbuf;
-// 	}
+	if (udata) {
+		if (udata->outlen < sizeof(*uresp))
+			return -EINVAL;
+		uresp = udata->outbuf;
+	}
 
-// 	if (init->create_flags)
-// 		return -EOPNOTSUPP;
+	if (init->create_flags)
+		return -EOPNOTSUPP;
 
-// 	err = dtld_qp_chk_init(rxe, init);
-// 	if (err)
-// 		return err;
+	err = dtld_qp_chk_init(dtld, init);
+	if (err)
+		return err;
 
-// 	if (udata) {
-// 		if (udata->inlen)
-// 			return -EINVAL;
+	if (udata) {
+		if (udata->inlen)
+			return -EINVAL;
 
-// 		qp->is_user = true;
-// 	} else {
-// 		qp->is_user = false;
-// 	}
+		qp->is_user = true;
+	} else {
+		qp->is_user = false;
+	}
 
-// 	err = dtld_add_to_pool(&rxe->qp_pool, qp);
-// 	if (err)
-// 		return err;
+	err = dtld_add_to_pool(&dtld->qp_pool, qp);
+	if (err)
+		return err;
 
-// 	err = dtld_qp_from_init(rxe, qp, pd, init, uresp, ibqp->pd, udata);
-// 	if (err)
-// 		goto qp_init;
+	err = dtld_qp_from_init(dtld, qp, pd, init, uresp, ibqp->pd, udata);
+	if (err)
+		goto qp_init;
 
-// 	return 0;
+	return 0;
 
-// qp_init:
-// 	dtld_put(qp);
-// 	return err;
-// }
+qp_init:
+	dtld_put(qp);
+	return err;
+}
 
 // static int dtld_modify_qp(struct ib_qp *ibqp, struct ib_qp_attr *attr,
 // 			 int mask, struct ib_udata *udata)
@@ -1038,7 +1038,7 @@ static const struct ib_device_ops dtld_dev_ops = {
 	// .attach_mcast = dtld_attach_mcast,
 	// .create_ah = dtld_create_ah,
 	.create_cq = dtld_create_cq,
-	// .create_qp = dtld_create_qp,
+	.create_qp = dtld_create_qp,
 	// .create_srq = dtld_create_srq,
 	// .create_user_ah = dtld_create_ah,
 	// .dealloc_driver = dtld_dealloc,
@@ -1080,9 +1080,9 @@ static const struct ib_device_ops dtld_dev_ops = {
 	// .resize_cq = dtld_resize_cq,
 
 	// INIT_RDMA_OBJ_SIZE(ib_ah, dtld_ah, ibah),
-	// INIT_RDMA_OBJ_SIZE(ib_cq, dtld_cq, ibcq),
-	// INIT_RDMA_OBJ_SIZE(ib_pd, dtld_pd, ibpd),
-	// INIT_RDMA_OBJ_SIZE(ib_qp, dtld_qp, ibqp),
+	INIT_RDMA_OBJ_SIZE(ib_cq, dtld_cq, ibcq),
+	INIT_RDMA_OBJ_SIZE(ib_pd, dtld_pd, ibpd),
+	INIT_RDMA_OBJ_SIZE(ib_qp, dtld_qp, ibqp),
 	// INIT_RDMA_OBJ_SIZE(ib_srq, dtld_srq, ibsrq),
 	INIT_RDMA_OBJ_SIZE(ib_ucontext, dtld_ucontext, ibuc),
 	// INIT_RDMA_OBJ_SIZE(ib_mw, dtld_mw, ibmw),

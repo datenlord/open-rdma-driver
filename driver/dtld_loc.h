@@ -100,12 +100,12 @@ int dtld_mr_init_user(struct dtld_pd *pd, u64 start, u64 length, u64 iova,
 // 		    struct sk_buff *skb);
 // const char *dtld_parent_name(struct dtld_dev *dtld, unsigned int port_num);
 
-// /* dtld_qp.c */
-// int dtld_qp_chk_init(struct dtld_dev *dtld, struct ib_qp_init_attr *init);
-// int dtld_qp_from_init(struct dtld_dev *dtld, struct dtld_qp *qp, struct dtld_pd *pd,
-// 		     struct ib_qp_init_attr *init,
-// 		     struct dtld_create_qp_resp __user *uresp,
-// 		     struct ib_pd *ibpd, struct ib_udata *udata);
+/* dtld_qp.c */
+int dtld_qp_chk_init(struct dtld_dev *dtld, struct ib_qp_init_attr *init);
+int dtld_qp_from_init(struct dtld_dev *dtld, struct dtld_qp *qp, struct dtld_pd *pd,
+		     struct ib_qp_init_attr *init,
+		     struct dtld_create_qp_resp __user *uresp,
+		     struct ib_pd *ibpd, struct ib_udata *udata);
 // int dtld_qp_to_init(struct dtld_qp *qp, struct ib_qp_init_attr *init);
 // int dtld_qp_chk_attr(struct dtld_dev *dtld, struct dtld_qp *qp,
 // 		    struct ib_qp_attr *attr, int mask);
@@ -114,17 +114,17 @@ int dtld_mr_init_user(struct dtld_pd *pd, u64 start, u64 length, u64 iova,
 // int dtld_qp_to_attr(struct dtld_qp *qp, struct ib_qp_attr *attr, int mask);
 // void dtld_qp_error(struct dtld_qp *qp);
 // int dtld_qp_chk_destroy(struct dtld_qp *qp);
-// void dtld_qp_cleanup(struct dtld_pool_elem *elem);
+void dtld_qp_cleanup(struct dtld_pool_elem *elem);
 
-// static inline int qp_num(struct dtld_qp *qp)
-// {
-// 	return qp->ibqp.qp_num;
-// }
+static inline int qp_num(struct dtld_qp *qp)
+{
+	return qp->ibqp.qp_num;
+}
 
-// static inline enum ib_qp_type qp_type(struct dtld_qp *qp)
-// {
-// 	return qp->ibqp.qp_type;
-// }
+static inline enum ib_qp_type qp_type(struct dtld_qp *qp)
+{
+	return qp->ibqp.qp_type;
+}
 
 // static inline enum ib_qp_state qp_state(struct dtld_qp *qp)
 // {
@@ -139,13 +139,13 @@ int dtld_mr_init_user(struct dtld_pd *pd, u64 start, u64 length, u64 iova,
 // 		return IB_MTU_4096;
 // }
 
-// static inline int rcv_wqe_size(int max_sge)
-// {
-// 	return sizeof(struct dtld_recv_wqe) +
-// 		max_sge * sizeof(struct ib_sge);
-// }
+static inline int rcv_wqe_size(int max_sge)
+{
+	return sizeof(struct dtld_recv_wqe) +
+		max_sge * sizeof(struct ib_sge);
+}
 
-// void free_rd_atomic_resource(struct dtld_qp *qp, struct resp_res *res);
+void free_rd_atomic_resource(struct dtld_qp *qp, struct resp_res *res);
 
 // static inline void dtld_advance_resp_resource(struct dtld_qp *qp)
 // {
@@ -154,8 +154,8 @@ int dtld_mr_init_user(struct dtld_pd *pd, u64 start, u64 length, u64 iova,
 // 		qp->resp.res_head = 0;
 // }
 
-// void retransmit_timer(struct timer_list *t);
-// void rnr_nak_timer(struct timer_list *t);
+void retransmit_timer(struct timer_list *t);
+void rnr_nak_timer(struct timer_list *t);
 
 // /* dtld_srq.c */
 // int dtld_srq_chk_init(struct dtld_dev *dtld, struct ib_srq_init_attr *init);
@@ -171,9 +171,9 @@ int dtld_mr_init_user(struct dtld_pd *pd, u64 start, u64 length, u64 iova,
 
 // void dtld_dealloc(struct ib_device *ib_dev);
 
-// int dtld_completer(void *arg);
-// int dtld_requester(void *arg);
-// int dtld_responder(void *arg);
+int dtld_completer(void *arg);
+int dtld_requester(void *arg);
+int dtld_responder(void *arg);
 
 // /* dtld_icrc.c */
 // int dtld_icrc_init(struct dtld_dev *dtld);

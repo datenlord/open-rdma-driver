@@ -7,5 +7,10 @@ dtld_ib-y := \
 	dtld_pool.o \
 	dtld_mr.o \
 	dtld_cq.o \
+	dtld_qp.o \
 	dtld_queue.o \
+	dtld_task.o \
+	dtld_req.o \
+	dtld_resp.o \
+	dtld_comp.o \
 

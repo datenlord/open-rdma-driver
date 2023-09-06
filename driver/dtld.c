@@ -58,7 +58,7 @@ static void dtld_init_pools(struct dtld_dev *dtld)
 	dtld_pool_init(dtld, &dtld->pd_pool, DTLD_TYPE_PD);
 	// dtld_pool_init(dtld, &dtld->ah_pool, DTLD_TYPE_AH);
 	// dtld_pool_init(dtld, &dtld->srq_pool, DTLD_TYPE_SRQ);
-	// dtld_pool_init(dtld, &dtld->qp_pool, DTLD_TYPE_QP);
+	dtld_pool_init(dtld, &dtld->qp_pool, DTLD_TYPE_QP);
 	dtld_pool_init(dtld, &dtld->cq_pool, DTLD_TYPE_CQ);
 	dtld_pool_init(dtld, &dtld->mr_pool, DTLD_TYPE_MR);
 	// dtld_pool_init(dtld, &dtld->mw_pool, DTLD_TYPE_MW);
