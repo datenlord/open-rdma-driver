@@ -143,18 +143,18 @@ static int dtld_port_immutable(struct ib_device *dev, u32 port_num,
 
 static int dtld_alloc_pd(struct ib_pd *ibpd, struct ib_udata *udata)
 {
-	// struct dtld_dev *rxe = dtld_from_ibdev(ibpd->device);
-	// struct dtld_pd *pd = to_rpd(ibpd);
+	struct dtld_dev *dtld = dtld_from_ibdev(ibpd->device);
+	struct dtld_pd *pd = to_dtld_pd(ibpd);
 
-	// return dtld_add_to_pool(&rxe->pd_pool, pd);
-	return 0;
+	return dtld_add_to_pool(&dtld->pd_pool, pd);
+
 }
 
 static int dtld_dealloc_pd(struct ib_pd *ibpd, struct ib_udata *udata)
 {
-	// struct dtld_pd *pd = to_rpd(ibpd);
+	struct dtld_pd *pd = to_dtld_pd(ibpd);
 
-	// dtld_put(pd);
+	dtld_put(pd);
 	return 0;
 }
 

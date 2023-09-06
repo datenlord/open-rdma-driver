@@ -25,14 +25,14 @@ static const struct dtld_type_info {
 		.max_index	= UINT_MAX,
 		.max_elem	= UINT_MAX,
 	},
-	// [DTLD_TYPE_PD] = {
-	// 	.name		= "pd",
-	// 	.size		= sizeof(struct dtld_pd),
-	// 	.elem_offset	= offsetof(struct dtld_pd, elem),
-	// 	.min_index	= 1,
-	// 	.max_index	= UINT_MAX,
-	// 	.max_elem	= UINT_MAX,
-	// },
+	[DTLD_TYPE_PD] = {
+		.name		= "pd",
+		.size		= sizeof(struct dtld_pd),
+		.elem_offset	= offsetof(struct dtld_pd, elem),
+		.min_index	= 1,
+		.max_index	= UINT_MAX,
+		.max_elem	= UINT_MAX,
+	},
 	// [DTLD_TYPE_AH] = {
 	// 	.name		= "ah",
 	// 	.size		= sizeof(struct dtld_ah),

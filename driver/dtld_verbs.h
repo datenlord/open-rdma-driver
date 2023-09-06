@@ -22,6 +22,7 @@ struct dtld_dev {
 	struct ib_device_attr	attr;
 	struct dtld_port		port;
 
+	struct dtld_pool		pd_pool;
 	struct dtld_pool		mr_pool;
 };
 

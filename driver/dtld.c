@@ -51,6 +51,19 @@ static void dtld_init_device_param(struct dtld_dev *dtld)
 	// dtld->max_ucontext			= DTLD_MAX_UCONTEXT;
 }
 
+/* init pools of managed objects */
+static void dtld_init_pools(struct dtld_dev *dtld)
+{
+	// dtld_pool_init(dtld, &dtld->uc_pool, DTLD_TYPE_UC);
+	dtld_pool_init(dtld, &dtld->pd_pool, DTLD_TYPE_PD);
+	// dtld_pool_init(dtld, &dtld->ah_pool, DTLD_TYPE_AH);
+	// dtld_pool_init(dtld, &dtld->srq_pool, DTLD_TYPE_SRQ);
+	// dtld_pool_init(dtld, &dtld->qp_pool, DTLD_TYPE_QP);
+	// dtld_pool_init(dtld, &dtld->cq_pool, DTLD_TYPE_CQ);
+	dtld_pool_init(dtld, &dtld->mr_pool, DTLD_TYPE_MR);
+	// dtld_pool_init(dtld, &dtld->mw_pool, DTLD_TYPE_MW);
+}
+
 /* initialize port attributes */
 static void dtld_init_port_param(struct dtld_port *port)
 {
@@ -109,6 +122,8 @@ static int __init dtld_ib_init(void)
 	struct dtld_dev *dtld = NULL;
 
 	dtld = ib_alloc_device(dtld_dev, ib_dev);
+
+	dtld_init_pools(dtld);
 
 	dtld_init_device_param(dtld);
 
