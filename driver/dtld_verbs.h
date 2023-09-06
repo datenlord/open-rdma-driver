@@ -22,6 +22,7 @@ struct dtld_dev {
 	struct ib_device_attr	attr;
 	struct dtld_port		port;
 
+	struct dtld_pool		cq_pool;
 	struct dtld_pool		pd_pool;
 	struct dtld_pool		mr_pool;
 };
@@ -36,6 +37,24 @@ struct dtld_pd {
 	struct dtld_pool_elem	elem;
 };
 
+struct dtld_cqe {
+	union {
+		struct ib_wc		ibwc;
+		struct ib_uverbs_wc	uibwc;
+	};
+};
+
+struct dtld_cq {
+	struct ib_cq		ibcq;
+	struct dtld_pool_elem	elem;
+	struct dtld_queue	*queue;
+	spinlock_t		cq_lock;
+	u8			notify;
+	bool			is_dying;
+	bool			is_user;
+	struct tasklet_struct	comp_task;
+	atomic_t		num_wq;
+};
 
 enum dtld_mr_state {
 	DTLD_MR_STATE_INVALID,
@@ -68,6 +87,11 @@ struct dtld_mr {
 	struct dtld_map_set	*cur_map_set;
 	struct dtld_map_set	*next_map_set;
 };
+
+static inline struct dtld_cq *to_dtld_cq(struct ib_cq *cq)
+{
+	return cq ? container_of(cq, struct dtld_cq, ibcq) : NULL;
+}
 
 static inline struct dtld_pd *to_dtld_pd(struct ib_pd *pd)
 {

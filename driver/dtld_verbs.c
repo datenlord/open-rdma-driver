@@ -766,51 +766,51 @@ static int dtld_dealloc_pd(struct ib_pd *ibpd, struct ib_udata *udata)
 // 	return err;
 // }
 
-// static int dtld_create_cq(struct ib_cq *ibcq, const struct ib_cq_init_attr *attr,
-// 			 struct ib_udata *udata)
-// {
-// 	int err;
-// 	struct ib_device *dev = ibcq->device;
-// 	struct dtld_dev *rxe = dtld_from_ibdev(dev);
-// 	struct dtld_cq *cq = to_rcq(ibcq);
-// 	struct dtld_create_cq_resp __user *uresp = NULL;
+static int dtld_create_cq(struct ib_cq *ibcq, const struct ib_cq_init_attr *attr,
+			 struct ib_udata *udata)
+{
+	int err;
+	struct ib_device *dev = ibcq->device;
+	struct dtld_dev *dtld = dtld_from_ibdev(dev);
+	struct dtld_cq *cq = to_dtld_cq(ibcq);
+	struct dtld_create_cq_resp __user *uresp = NULL;
 
-// 	if (udata) {
-// 		if (udata->outlen < sizeof(*uresp))
-// 			return -EINVAL;
-// 		uresp = udata->outbuf;
-// 	}
+	if (udata) {
+		if (udata->outlen < sizeof(*uresp))
+			return -EINVAL;
+		uresp = udata->outbuf;
+	}
 
-// 	if (attr->flags)
-// 		return -EOPNOTSUPP;
+	if (attr->flags)
+		return -EOPNOTSUPP;
 
-// 	err = dtld_cq_chk_attr(rxe, NULL, attr->cqe, attr->comp_vector);
-// 	if (err)
-// 		return err;
+	err = dtld_cq_chk_attr(dtld, NULL, attr->cqe, attr->comp_vector);
+	if (err)
+		return err;
 
-// 	err = dtld_cq_from_init(rxe, cq, attr->cqe, attr->comp_vector, udata,
-// 			       uresp);
-// 	if (err)
-// 		return err;
+	err = dtld_cq_from_init(dtld, cq, attr->cqe, attr->comp_vector, udata,
+			       uresp);
+	if (err)
+		return err;
 
-// 	return dtld_add_to_pool(&rxe->cq_pool, cq);
-// }
+	return dtld_add_to_pool(&dtld->cq_pool, cq);
+}
 
-// static int dtld_destroy_cq(struct ib_cq *ibcq, struct ib_udata *udata)
-// {
-// 	struct dtld_cq *cq = to_rcq(ibcq);
+static int dtld_destroy_cq(struct ib_cq *ibcq, struct ib_udata *udata)
+{
+	struct dtld_cq *cq = to_dtld_cq(ibcq);
 
-// 	/* See IBA C11-17: The CI shall return an error if this Verb is
-// 	 * invoked while a Work Queue is still associated with the CQ.
-// 	 */
-// 	if (atomic_read(&cq->num_wq))
-// 		return -EINVAL;
+	/* See IBA C11-17: The CI shall return an error if this Verb is
+	 * invoked while a Work Queue is still associated with the CQ.
+	 */
+	if (atomic_read(&cq->num_wq))
+		return -EINVAL;
 
-// 	dtld_cq_disable(cq);
+	dtld_cq_disable(cq);
 
-// 	dtld_put(cq);
-// 	return 0;
-// }
+	dtld_put(cq);
+	return 0;
+}
 
 // static int dtld_resize_cq(struct ib_cq *ibcq, int cqe, struct ib_udata *udata)
 // {
@@ -1037,7 +1037,7 @@ static const struct ib_device_ops dtld_dev_ops = {
 	.alloc_ucontext = dtld_alloc_ucontext,
 	// .attach_mcast = dtld_attach_mcast,
 	// .create_ah = dtld_create_ah,
-	// .create_cq = dtld_create_cq,
+	.create_cq = dtld_create_cq,
 	// .create_qp = dtld_create_qp,
 	// .create_srq = dtld_create_srq,
 	// .create_user_ah = dtld_create_ah,
@@ -1047,7 +1047,7 @@ static const struct ib_device_ops dtld_dev_ops = {
 	.dealloc_ucontext = dtld_dealloc_ucontext,
 	// .dereg_mr = dtld_dereg_mr,
 	// .destroy_ah = dtld_destroy_ah,
-	// .destroy_cq = dtld_destroy_cq,
+	.destroy_cq = dtld_destroy_cq,
 	// .destroy_qp = dtld_destroy_qp,
 	// .destroy_srq = dtld_destroy_srq,
 	// .detach_mcast = dtld_detach_mcast,

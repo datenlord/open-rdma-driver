@@ -6,4 +6,6 @@ dtld_ib-y := \
 	dtld_verbs.o \
 	dtld_pool.o \
 	dtld_mr.o \
+	dtld_cq.o \
+	dtld_queue.o \
 

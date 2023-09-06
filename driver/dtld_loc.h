@@ -21,13 +21,13 @@
 
 // struct dtld_av *dtld_get_av(struct dtld_pkt_info *pkt, struct dtld_ah **ahp);
 
-// /* dtld_cq.c */
-// int dtld_cq_chk_attr(struct dtld_dev *dtld, struct dtld_cq *cq,
-// 		    int cqe, int comp_vector);
+/* dtld_cq.c */
+int dtld_cq_chk_attr(struct dtld_dev *dtld, struct dtld_cq *cq,
+		    int cqe, int comp_vector);
 
-// int dtld_cq_from_init(struct dtld_dev *dtld, struct dtld_cq *cq, int cqe,
-// 		     int comp_vector, struct ib_udata *udata,
-// 		     struct dtld_create_cq_resp __user *uresp);
+int dtld_cq_from_init(struct dtld_dev *dtld, struct dtld_cq *cq, int cqe,
+		     int comp_vector, struct ib_udata *udata,
+		     struct dtld_create_cq_resp __user *uresp);
 
 // int dtld_cq_resize_queue(struct dtld_cq *cq, int new_cqe,
 // 			struct dtld_resize_cq_resp __user *uresp,
@@ -35,9 +35,9 @@
 
 // int dtld_cq_post(struct dtld_cq *cq, struct dtld_cqe *cqe, int solicited);
 
-// void dtld_cq_disable(struct dtld_cq *cq);
+void dtld_cq_disable(struct dtld_cq *cq);
 
-// void dtld_cq_cleanup(struct dtld_pool_elem *elem);
+void dtld_cq_cleanup(struct dtld_pool_elem *elem);
 
 // /* dtld_mcast.c */
 // struct dtld_mcg *dtld_lookup_mcg(struct dtld_dev *dtld, union ib_gid *mgid);
@@ -45,15 +45,15 @@
 // int dtld_detach_mcast(struct ib_qp *ibqp, union ib_gid *mgid, u16 mlid);
 // void dtld_cleanup_mcg(struct kref *kref);
 
-// /* dtld_mmap.c */
-// struct dtld_mmap_info {
-// 	struct list_head	pending_mmaps;
-// 	struct ib_ucontext	*context;
-// 	struct kref		ref;
-// 	void			*obj;
+/* dtld_mmap.c */
+struct dtld_mmap_info {
+	struct list_head	pending_mmaps;
+	struct ib_ucontext	*context;
+	struct kref		ref;
+	void			*obj;
 
-// 	struct mminfo info;
-// };
+	struct mminfo info;
+};
 
 // void dtld_mmap_release(struct kref *ref);
 
