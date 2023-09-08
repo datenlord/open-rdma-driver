@@ -184,9 +184,9 @@ int dtld_responder(void *arg);
 
 // void dtld_comp_queue_pkt(struct dtld_qp *qp, struct sk_buff *skb);
 
-// static inline unsigned int wr_opcode_mask(int opcode, struct dtld_qp *qp)
-// {
-// 	return dtld_wr_opcode_info[opcode].mask[qp->ibqp.qp_type];
-// }
+static inline unsigned int wr_opcode_mask(int opcode, struct dtld_qp *qp)
+{
+	return dtld_wr_opcode_info[opcode].mask[qp->ibqp.qp_type];
+}
 
 #endif /* DTLD_LOC_H */

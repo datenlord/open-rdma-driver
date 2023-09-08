@@ -494,237 +494,237 @@ static int dtld_destroy_qp(struct ib_qp *ibqp, struct ib_udata *udata)
 	return 0;
 }
 
-// static int validate_send_wr(struct dtld_qp *qp, const struct ib_send_wr *ibwr,
-// 			    unsigned int mask, unsigned int length)
-// {
-// 	int num_sge = ibwr->num_sge;
-// 	struct dtld_sq *sq = &qp->sq;
+static int validate_send_wr(struct dtld_qp *qp, const struct ib_send_wr *ibwr,
+			    unsigned int mask, unsigned int length)
+{
+	int num_sge = ibwr->num_sge;
+	struct dtld_sq *sq = &qp->sq;
 
-// 	if (unlikely(num_sge > sq->max_sge))
-// 		goto err1;
+	if (unlikely(num_sge > sq->max_sge))
+		goto err1;
 
-// 	if (unlikely(mask & WR_ATOMIC_MASK)) {
-// 		if (length < 8)
-// 			goto err1;
+	if (unlikely(mask & WR_ATOMIC_MASK)) {
+		if (length < 8)
+			goto err1;
 
-// 		if (atomic_wr(ibwr)->remote_addr & 0x7)
-// 			goto err1;
-// 	}
+		if (atomic_wr(ibwr)->remote_addr & 0x7)
+			goto err1;
+	}
 
-// 	if (unlikely((ibwr->send_flags & IB_SEND_INLINE) &&
-// 		     (length > sq->max_inline)))
-// 		goto err1;
+	if (unlikely((ibwr->send_flags & IB_SEND_INLINE) &&
+		     (length > sq->max_inline)))
+		goto err1;
 
-// 	return 0;
+	return 0;
 
-// err1:
-// 	return -EINVAL;
-// }
+err1:
+	return -EINVAL;
+}
 
-// static void init_send_wr(struct dtld_qp *qp, struct dtld_send_wr *wr,
-// 			 const struct ib_send_wr *ibwr)
-// {
-// 	wr->wr_id = ibwr->wr_id;
-// 	wr->num_sge = ibwr->num_sge;
-// 	wr->opcode = ibwr->opcode;
-// 	wr->send_flags = ibwr->send_flags;
+static void init_send_wr(struct dtld_qp *qp, struct dtld_send_wr *wr,
+			 const struct ib_send_wr *ibwr)
+{
+	wr->wr_id = ibwr->wr_id;
+	wr->num_sge = ibwr->num_sge;
+	wr->opcode = ibwr->opcode;
+	wr->send_flags = ibwr->send_flags;
 
-// 	if (qp_type(qp) == IB_QPT_UD ||
-// 	    qp_type(qp) == IB_QPT_GSI) {
-// 		struct ib_ah *ibah = ud_wr(ibwr)->ah;
+	if (qp_type(qp) == IB_QPT_UD ||
+	    qp_type(qp) == IB_QPT_GSI) {
+		struct ib_ah *ibah = ud_wr(ibwr)->ah;
 
-// 		wr->wr.ud.remote_qpn = ud_wr(ibwr)->remote_qpn;
-// 		wr->wr.ud.remote_qkey = ud_wr(ibwr)->remote_qkey;
-// 		wr->wr.ud.ah_num = to_rah(ibah)->ah_num;
-// 		if (qp_type(qp) == IB_QPT_GSI)
-// 			wr->wr.ud.pkey_index = ud_wr(ibwr)->pkey_index;
-// 		if (wr->opcode == IB_WR_SEND_WITH_IMM)
-// 			wr->ex.imm_data = ibwr->ex.imm_data;
-// 	} else {
-// 		switch (wr->opcode) {
-// 		case IB_WR_RDMA_WRITE_WITH_IMM:
-// 			wr->ex.imm_data = ibwr->ex.imm_data;
-// 			fallthrough;
-// 		case IB_WR_RDMA_READ:
-// 		case IB_WR_RDMA_WRITE:
-// 			wr->wr.rdma.remote_addr = rdma_wr(ibwr)->remote_addr;
-// 			wr->wr.rdma.rkey	= rdma_wr(ibwr)->rkey;
-// 			break;
-// 		case IB_WR_SEND_WITH_IMM:
-// 			wr->ex.imm_data = ibwr->ex.imm_data;
-// 			break;
-// 		case IB_WR_SEND_WITH_INV:
-// 			wr->ex.invalidate_rkey = ibwr->ex.invalidate_rkey;
-// 			break;
-// 		case IB_WR_ATOMIC_CMP_AND_SWP:
-// 		case IB_WR_ATOMIC_FETCH_AND_ADD:
-// 			wr->wr.atomic.remote_addr =
-// 				atomic_wr(ibwr)->remote_addr;
-// 			wr->wr.atomic.compare_add =
-// 				atomic_wr(ibwr)->compare_add;
-// 			wr->wr.atomic.swap = atomic_wr(ibwr)->swap;
-// 			wr->wr.atomic.rkey = atomic_wr(ibwr)->rkey;
-// 			break;
-// 		case IB_WR_LOCAL_INV:
-// 			wr->ex.invalidate_rkey = ibwr->ex.invalidate_rkey;
-// 		break;
-// 		case IB_WR_REG_MR:
-// 			wr->wr.reg.mr = reg_wr(ibwr)->mr;
-// 			wr->wr.reg.key = reg_wr(ibwr)->key;
-// 			wr->wr.reg.access = reg_wr(ibwr)->access;
-// 		break;
-// 		default:
-// 			break;
-// 		}
-// 	}
-// }
+		wr->wr.ud.remote_qpn = ud_wr(ibwr)->remote_qpn;
+		wr->wr.ud.remote_qkey = ud_wr(ibwr)->remote_qkey;
+		wr->wr.ud.ah_num = to_dtld_ah(ibah)->ah_num;
+		if (qp_type(qp) == IB_QPT_GSI)
+			wr->wr.ud.pkey_index = ud_wr(ibwr)->pkey_index;
+		if (wr->opcode == IB_WR_SEND_WITH_IMM)
+			wr->ex.imm_data = ibwr->ex.imm_data;
+	} else {
+		switch (wr->opcode) {
+		case IB_WR_RDMA_WRITE_WITH_IMM:
+			wr->ex.imm_data = ibwr->ex.imm_data;
+			fallthrough;
+		case IB_WR_RDMA_READ:
+		case IB_WR_RDMA_WRITE:
+			wr->wr.rdma.remote_addr = rdma_wr(ibwr)->remote_addr;
+			wr->wr.rdma.rkey	= rdma_wr(ibwr)->rkey;
+			break;
+		case IB_WR_SEND_WITH_IMM:
+			wr->ex.imm_data = ibwr->ex.imm_data;
+			break;
+		case IB_WR_SEND_WITH_INV:
+			wr->ex.invalidate_rkey = ibwr->ex.invalidate_rkey;
+			break;
+		case IB_WR_ATOMIC_CMP_AND_SWP:
+		case IB_WR_ATOMIC_FETCH_AND_ADD:
+			wr->wr.atomic.remote_addr =
+				atomic_wr(ibwr)->remote_addr;
+			wr->wr.atomic.compare_add =
+				atomic_wr(ibwr)->compare_add;
+			wr->wr.atomic.swap = atomic_wr(ibwr)->swap;
+			wr->wr.atomic.rkey = atomic_wr(ibwr)->rkey;
+			break;
+		case IB_WR_LOCAL_INV:
+			wr->ex.invalidate_rkey = ibwr->ex.invalidate_rkey;
+		break;
+		case IB_WR_REG_MR:
+			wr->wr.reg.mr = reg_wr(ibwr)->mr;
+			wr->wr.reg.key = reg_wr(ibwr)->key;
+			wr->wr.reg.access = reg_wr(ibwr)->access;
+		break;
+		default:
+			break;
+		}
+	}
+}
 
-// static void copy_inline_data_to_wqe(struct dtld_send_wqe *wqe,
-// 				    const struct ib_send_wr *ibwr)
-// {
-// 	struct ib_sge *sge = ibwr->sg_list;
-// 	u8 *p = wqe->dma.inline_data;
-// 	int i;
+static void copy_inline_data_to_wqe(struct dtld_send_wqe *wqe,
+				    const struct ib_send_wr *ibwr)
+{
+	struct ib_sge *sge = ibwr->sg_list;
+	u8 *p = wqe->dma.inline_data;
+	int i;
 
-// 	for (i = 0; i < ibwr->num_sge; i++, sge++) {
-// 		memcpy(p, (void *)(uintptr_t)sge->addr, sge->length);
-// 		p += sge->length;
-// 	}
-// }
+	for (i = 0; i < ibwr->num_sge; i++, sge++) {
+		memcpy(p, (void *)(uintptr_t)sge->addr, sge->length);
+		p += sge->length;
+	}
+}
 
-// static void init_send_wqe(struct dtld_qp *qp, const struct ib_send_wr *ibwr,
-// 			 unsigned int mask, unsigned int length,
-// 			 struct dtld_send_wqe *wqe)
-// {
-// 	int num_sge = ibwr->num_sge;
+static void init_send_wqe(struct dtld_qp *qp, const struct ib_send_wr *ibwr,
+			 unsigned int mask, unsigned int length,
+			 struct dtld_send_wqe *wqe)
+{
+	int num_sge = ibwr->num_sge;
 
-// 	init_send_wr(qp, &wqe->wr, ibwr);
+	init_send_wr(qp, &wqe->wr, ibwr);
 
-// 	/* local operation */
-// 	if (unlikely(mask & WR_LOCAL_OP_MASK)) {
-// 		wqe->mask = mask;
-// 		wqe->state = wqe_state_posted;
-// 		return;
-// 	}
+	/* local operation */
+	if (unlikely(mask & WR_LOCAL_OP_MASK)) {
+		wqe->mask = mask;
+		wqe->state = wqe_state_posted;
+		return;
+	}
 
-// 	if (unlikely(ibwr->send_flags & IB_SEND_INLINE))
-// 		copy_inline_data_to_wqe(wqe, ibwr);
-// 	else
-// 		memcpy(wqe->dma.sge, ibwr->sg_list,
-// 		       num_sge * sizeof(struct ib_sge));
+	if (unlikely(ibwr->send_flags & IB_SEND_INLINE))
+		copy_inline_data_to_wqe(wqe, ibwr);
+	else
+		memcpy(wqe->dma.sge, ibwr->sg_list,
+		       num_sge * sizeof(struct ib_sge));
 
-// 	wqe->iova = mask & WR_ATOMIC_MASK ? atomic_wr(ibwr)->remote_addr :
-// 		mask & WR_READ_OR_WRITE_MASK ? rdma_wr(ibwr)->remote_addr : 0;
-// 	wqe->mask		= mask;
-// 	wqe->dma.length		= length;
-// 	wqe->dma.resid		= length;
-// 	wqe->dma.num_sge	= num_sge;
-// 	wqe->dma.cur_sge	= 0;
-// 	wqe->dma.sge_offset	= 0;
-// 	wqe->state		= wqe_state_posted;
-// 	wqe->ssn		= atomic_add_return(1, &qp->ssn);
-// }
+	wqe->iova = mask & WR_ATOMIC_MASK ? atomic_wr(ibwr)->remote_addr :
+		mask & WR_READ_OR_WRITE_MASK ? rdma_wr(ibwr)->remote_addr : 0;
+	wqe->mask		= mask;
+	wqe->dma.length		= length;
+	wqe->dma.resid		= length;
+	wqe->dma.num_sge	= num_sge;
+	wqe->dma.cur_sge	= 0;
+	wqe->dma.sge_offset	= 0;
+	wqe->state		= wqe_state_posted;
+	wqe->ssn		= atomic_add_return(1, &qp->ssn);
+}
 
-// static int post_one_send(struct dtld_qp *qp, const struct ib_send_wr *ibwr,
-// 			 unsigned int mask, u32 length)
-// {
-// 	int err;
-// 	struct dtld_sq *sq = &qp->sq;
-// 	struct dtld_send_wqe *send_wqe;
-// 	unsigned long flags;
-// 	int full;
+static int post_one_send(struct dtld_qp *qp, const struct ib_send_wr *ibwr,
+			 unsigned int mask, u32 length)
+{
+	int err;
+	struct dtld_sq *sq = &qp->sq;
+	struct dtld_send_wqe *send_wqe;
+	unsigned long flags;
+	int full;
 
-// 	err = validate_send_wr(qp, ibwr, mask, length);
-// 	if (err)
-// 		return err;
+	err = validate_send_wr(qp, ibwr, mask, length);
+	if (err)
+		return err;
 
-// 	spin_lock_irqsave(&qp->sq.sq_lock, flags);
+	spin_lock_irqsave(&qp->sq.sq_lock, flags);
 
-// 	full = queue_full(sq->queue, QUEUE_TYPE_TO_DRIVER);
+	full = queue_full(sq->queue, QUEUE_TYPE_TO_DRIVER);
 
-// 	if (unlikely(full)) {
-// 		spin_unlock_irqrestore(&qp->sq.sq_lock, flags);
-// 		return -ENOMEM;
-// 	}
+	if (unlikely(full)) {
+		spin_unlock_irqrestore(&qp->sq.sq_lock, flags);
+		return -ENOMEM;
+	}
 
-// 	send_wqe = queue_producer_addr(sq->queue, QUEUE_TYPE_TO_DRIVER);
-// 	init_send_wqe(qp, ibwr, mask, length, send_wqe);
+	send_wqe = queue_producer_addr(sq->queue, QUEUE_TYPE_TO_DRIVER);
+	init_send_wqe(qp, ibwr, mask, length, send_wqe);
 
-// 	queue_advance_producer(sq->queue, QUEUE_TYPE_TO_DRIVER);
+	queue_advance_producer(sq->queue, QUEUE_TYPE_TO_DRIVER);
 
-// 	spin_unlock_irqrestore(&qp->sq.sq_lock, flags);
+	spin_unlock_irqrestore(&qp->sq.sq_lock, flags);
 
-// 	return 0;
-// }
+	return 0;
+}
 
-// static int dtld_post_send_kernel(struct dtld_qp *qp, const struct ib_send_wr *wr,
-// 				const struct ib_send_wr **bad_wr)
-// {
-// 	int err = 0;
-// 	unsigned int mask;
-// 	unsigned int length = 0;
-// 	int i;
-// 	struct ib_send_wr *next;
+static int dtld_post_send_kernel(struct dtld_qp *qp, const struct ib_send_wr *wr,
+				const struct ib_send_wr **bad_wr)
+{
+	int err = 0;
+	unsigned int mask;
+	unsigned int length = 0;
+	int i;
+	struct ib_send_wr *next;
 
-// 	while (wr) {
-// 		mask = wr_opcode_mask(wr->opcode, qp);
-// 		if (unlikely(!mask)) {
-// 			err = -EINVAL;
-// 			*bad_wr = wr;
-// 			break;
-// 		}
+	while (wr) {
+		mask = wr_opcode_mask(wr->opcode, qp);
+		if (unlikely(!mask)) {
+			err = -EINVAL;
+			*bad_wr = wr;
+			break;
+		}
 
-// 		if (unlikely((wr->send_flags & IB_SEND_INLINE) &&
-// 			     !(mask & WR_INLINE_MASK))) {
-// 			err = -EINVAL;
-// 			*bad_wr = wr;
-// 			break;
-// 		}
+		if (unlikely((wr->send_flags & IB_SEND_INLINE) &&
+			     !(mask & WR_INLINE_MASK))) {
+			err = -EINVAL;
+			*bad_wr = wr;
+			break;
+		}
 
-// 		next = wr->next;
+		next = wr->next;
 
-// 		length = 0;
-// 		for (i = 0; i < wr->num_sge; i++)
-// 			length += wr->sg_list[i].length;
+		length = 0;
+		for (i = 0; i < wr->num_sge; i++)
+			length += wr->sg_list[i].length;
 
-// 		err = post_one_send(qp, wr, mask, length);
+		err = post_one_send(qp, wr, mask, length);
 
-// 		if (err) {
-// 			*bad_wr = wr;
-// 			break;
-// 		}
-// 		wr = next;
-// 	}
+		if (err) {
+			*bad_wr = wr;
+			break;
+		}
+		wr = next;
+	}
 
-// 	dtld_run_task(&qp->req.task, 1);
-// 	if (unlikely(qp->req.state == QP_STATE_ERROR))
-// 		dtld_run_task(&qp->comp.task, 1);
+	dtld_run_task(&qp->req.task, 1);
+	if (unlikely(qp->req.state == QP_STATE_ERROR))
+		dtld_run_task(&qp->comp.task, 1);
 
-// 	return err;
-// }
+	return err;
+}
 
-// static int dtld_post_send(struct ib_qp *ibqp, const struct ib_send_wr *wr,
-// 			 const struct ib_send_wr **bad_wr)
-// {
-// 	struct dtld_qp *qp = to_rqp(ibqp);
+static int dtld_post_send(struct ib_qp *ibqp, const struct ib_send_wr *wr,
+			 const struct ib_send_wr **bad_wr)
+{
+	struct dtld_qp *qp = to_dtld_qp(ibqp);
 
-// 	if (unlikely(!qp->valid)) {
-// 		*bad_wr = wr;
-// 		return -EINVAL;
-// 	}
+	if (unlikely(!qp->valid)) {
+		*bad_wr = wr;
+		return -EINVAL;
+	}
 
-// 	if (unlikely(qp->req.state < QP_STATE_READY)) {
-// 		*bad_wr = wr;
-// 		return -EINVAL;
-// 	}
+	if (unlikely(qp->req.state < QP_STATE_READY)) {
+		*bad_wr = wr;
+		return -EINVAL;
+	}
 
-// 	if (qp->is_user) {
-// 		/* Utilize process context to do protocol processing */
-// 		dtld_run_task(&qp->req.task, 0);
-// 		return 0;
-// 	} else
-// 		return dtld_post_send_kernel(qp, wr, bad_wr);
-// }
+	if (qp->is_user) {
+		/* Utilize process context to do protocol processing */
+		dtld_run_task(&qp->req.task, 0);
+		return 0;
+	} else
+		return dtld_post_send_kernel(qp, wr, bad_wr);
+}
 
 static int dtld_post_recv(struct ib_qp *ibqp, const struct ib_recv_wr *wr,
 			 const struct ib_recv_wr **bad_wr)
@@ -1067,7 +1067,7 @@ static const struct ib_device_ops dtld_dev_ops = {
 	// .peek_cq = dtld_peek_cq,
 	// .poll_cq = dtld_poll_cq,
 	.post_recv = dtld_post_recv,
-	// .post_send = dtld_post_send,
+	.post_send = dtld_post_send,
 	// .post_srq_recv = dtld_post_srq_recv,
 	// .query_ah = dtld_query_ah,
 	.query_device = dtld_query_device,

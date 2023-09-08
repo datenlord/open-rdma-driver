@@ -128,6 +128,14 @@ struct dtld_ah {
 	int			ah_num;
 };
 
+enum wqe_state {
+	wqe_state_posted,
+	wqe_state_processing,
+	wqe_state_pending,
+	wqe_state_done,
+	wqe_state_error,
+};
+
 struct dtld_cqe {
 	union {
 		struct ib_wc		ibwc;
@@ -281,6 +289,11 @@ struct dtld_mr {
 	struct dtld_map_set	*cur_map_set;
 	struct dtld_map_set	*next_map_set;
 };
+
+static inline struct dtld_ah *to_dtld_ah(struct ib_ah *ah)
+{
+	return ah ? container_of(ah, struct dtld_ah, ibah) : NULL;
+}
 
 static inline struct dtld_qp *to_dtld_qp(struct ib_qp *qp)
 {
