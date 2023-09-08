@@ -24,6 +24,7 @@ struct dtld_dev {
 
 	int			max_inline_data;
 
+	struct dtld_pool		ah_pool;
 	struct dtld_pool		qp_pool;
 	struct dtld_pool		cq_pool;
 	struct dtld_pool		pd_pool;
@@ -119,6 +120,14 @@ struct dtld_ucontext {
 struct dtld_pd {
 	struct ib_pd            ibpd;
 	struct dtld_pool_elem	elem;
+};
+
+struct dtld_ah {
+	struct ib_ah		ibah;
+	struct dtld_pool_elem	elem;
+	struct dtld_av		av;
+	bool			is_user;
+	int			ah_num;
 };
 
 struct dtld_cqe {
@@ -299,6 +308,12 @@ static inline struct dtld_dev *dtld_from_ibdev(struct ib_device *dev)
 {
 	return dev ? container_of(dev, struct dtld_dev, ib_dev) : NULL;
 }
+
+static inline struct dtld_pd *dtld_ah_pd(struct dtld_ah *ah)
+{
+	return to_dtld_pd(ah->ibah.pd);
+}
+
 
 int dtld_register_device(struct dtld_dev *dtld, const char *ibdev_name);
 void dtld_unregister_device(struct dtld_dev *dtld);

@@ -7,9 +7,11 @@
 #include <rdma/ib_smi.h>
 #include <rdma/ib_umem.h>
 // #include <rdma/ib_cache.h>
-// #include <rdma/ib_addr.h>
+#include <rdma/ib_addr.h>
 // #include <crypto/hash.h>
 
+#include "dtld_opcode.h"
+#include "dtld_hdr.h"
 #include "dtld_param.h"
 #include "dtld_verbs.h"
 #include "dtld_loc.h"

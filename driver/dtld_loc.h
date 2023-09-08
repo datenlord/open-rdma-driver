@@ -7,17 +7,17 @@
 #ifndef DTLD_LOC_H
 #define DTLD_LOC_H
 
-// /* dtld_av.c */
-// void dtld_init_av(struct rdma_ah_attr *attr, struct dtld_av *av);
+/* dtld_av.c */
+void dtld_init_av(struct rdma_ah_attr *attr, struct dtld_av *av);
 
-// int dtld_av_chk_attr(struct dtld_dev *dtld, struct rdma_ah_attr *attr);
+int dtld_av_chk_attr(struct dtld_dev *dtld, struct rdma_ah_attr *attr);
 
-// void dtld_av_from_attr(u8 port_num, struct dtld_av *av,
-// 		     struct rdma_ah_attr *attr);
+void dtld_av_from_attr(u8 port_num, struct dtld_av *av,
+		     struct rdma_ah_attr *attr);
 
 // void dtld_av_to_attr(struct dtld_av *av, struct rdma_ah_attr *attr);
 
-// void dtld_av_fill_ip_info(struct dtld_av *av, struct rdma_ah_attr *attr);
+void dtld_av_fill_ip_info(struct dtld_av *av, struct rdma_ah_attr *attr);
 
 // struct dtld_av *dtld_get_av(struct dtld_pkt_info *pkt, struct dtld_ah **ahp);
 
@@ -107,10 +107,10 @@ int dtld_qp_from_init(struct dtld_dev *dtld, struct dtld_qp *qp, struct dtld_pd 
 		     struct dtld_create_qp_resp __user *uresp,
 		     struct ib_pd *ibpd, struct ib_udata *udata);
 // int dtld_qp_to_init(struct dtld_qp *qp, struct ib_qp_init_attr *init);
-// int dtld_qp_chk_attr(struct dtld_dev *dtld, struct dtld_qp *qp,
-// 		    struct ib_qp_attr *attr, int mask);
-// int dtld_qp_from_attr(struct dtld_qp *qp, struct ib_qp_attr *attr,
-// 		     int mask, struct ib_udata *udata);
+int dtld_qp_chk_attr(struct dtld_dev *dtld, struct dtld_qp *qp,
+		    struct ib_qp_attr *attr, int mask);
+int dtld_qp_from_attr(struct dtld_qp *qp, struct ib_qp_attr *attr,
+		     int mask, struct ib_udata *udata);
 // int dtld_qp_to_attr(struct dtld_qp *qp, struct ib_qp_attr *attr, int mask);
 // void dtld_qp_error(struct dtld_qp *qp);
 // int dtld_qp_chk_destroy(struct dtld_qp *qp);

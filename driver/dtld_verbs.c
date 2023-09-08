@@ -441,34 +441,34 @@ qp_init:
 	return err;
 }
 
-// static int dtld_modify_qp(struct ib_qp *ibqp, struct ib_qp_attr *attr,
-// 			 int mask, struct ib_udata *udata)
-// {
-// 	int err;
-// 	struct dtld_dev *rxe = dtld_from_ibdev(ibqp->device);
-// 	struct dtld_qp *qp = to_rqp(ibqp);
+static int dtld_modify_qp(struct ib_qp *ibqp, struct ib_qp_attr *attr,
+			 int mask, struct ib_udata *udata)
+{
+	int err;
+	struct dtld_dev *rxe = dtld_from_ibdev(ibqp->device);
+	struct dtld_qp *qp = to_dtld_qp(ibqp);
 
-// 	if (mask & ~IB_QP_ATTR_STANDARD_BITS)
-// 		return -EOPNOTSUPP;
+	if (mask & ~IB_QP_ATTR_STANDARD_BITS)
+		return -EOPNOTSUPP;
 
-// 	err = dtld_qp_chk_attr(rxe, qp, attr, mask);
-// 	if (err)
-// 		goto err1;
+	err = dtld_qp_chk_attr(rxe, qp, attr, mask);
+	if (err)
+		goto err1;
 
-// 	err = dtld_qp_from_attr(qp, attr, mask, udata);
-// 	if (err)
-// 		goto err1;
+	err = dtld_qp_from_attr(qp, attr, mask, udata);
+	if (err)
+		goto err1;
 
-// 	if ((mask & IB_QP_AV) && (attr->ah_attr.ah_flags & IB_AH_GRH))
-// 		qp->src_port = rdma_get_udp_sport(attr->ah_attr.grh.flow_label,
-// 						  qp->ibqp.qp_num,
-// 						  qp->attr.dest_qp_num);
+	// if ((mask & IB_QP_AV) && (attr->ah_attr.ah_flags & IB_AH_GRH))
+	// 	qp->src_port = rdma_get_udp_sport(attr->ah_attr.grh.flow_label,
+	// 					  qp->ibqp.qp_num,
+	// 					  qp->attr.dest_qp_num);
 
-// 	return 0;
+	return 0;
 
-// err1:
-// 	return err;
-// }
+err1:
+	return err;
+}
 
 // static int dtld_query_qp(struct ib_qp *ibqp, struct ib_qp_attr *attr,
 // 			int mask, struct ib_qp_init_attr *init)
@@ -1079,7 +1079,7 @@ static const struct ib_device_ops dtld_dev_ops = {
 	// .req_notify_cq = dtld_req_notify_cq,
 	// .resize_cq = dtld_resize_cq,
 
-	// INIT_RDMA_OBJ_SIZE(ib_ah, dtld_ah, ibah),
+	INIT_RDMA_OBJ_SIZE(ib_ah, dtld_ah, ibah),
 	INIT_RDMA_OBJ_SIZE(ib_cq, dtld_cq, ibcq),
 	INIT_RDMA_OBJ_SIZE(ib_pd, dtld_pd, ibpd),
 	INIT_RDMA_OBJ_SIZE(ib_qp, dtld_qp, ibqp),

@@ -33,14 +33,14 @@ static const struct dtld_type_info {
 		.max_index	= UINT_MAX,
 		.max_elem	= UINT_MAX,
 	},
-	// [DTLD_TYPE_AH] = {
-	// 	.name		= "ah",
-	// 	.size		= sizeof(struct dtld_ah),
-	// 	.elem_offset	= offsetof(struct dtld_ah, elem),
-	// 	.min_index	= DTLD_MIN_AH_INDEX,
-	// 	.max_index	= DTLD_MAX_AH_INDEX,
-	// 	.max_elem	= DTLD_MAX_AH_INDEX - DTLD_MIN_AH_INDEX + 1,
-	// },
+	[DTLD_TYPE_AH] = {
+		.name		= "ah",
+		.size		= sizeof(struct dtld_ah),
+		.elem_offset	= offsetof(struct dtld_ah, elem),
+		.min_index	= DTLD_MIN_AH_INDEX,
+		.max_index	= DTLD_MAX_AH_INDEX,
+		.max_elem	= DTLD_MAX_AH_INDEX - DTLD_MIN_AH_INDEX + 1,
+	},
 	// [DTLD_TYPE_SRQ] = {
 	// 	.name		= "srq",
 	// 	.size		= sizeof(struct dtld_srq),
