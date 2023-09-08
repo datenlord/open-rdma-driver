@@ -470,29 +470,29 @@ err1:
 	return err;
 }
 
-// static int dtld_query_qp(struct ib_qp *ibqp, struct ib_qp_attr *attr,
-// 			int mask, struct ib_qp_init_attr *init)
-// {
-// 	struct dtld_qp *qp = to_rqp(ibqp);
+static int dtld_query_qp(struct ib_qp *ibqp, struct ib_qp_attr *attr,
+			int mask, struct ib_qp_init_attr *init)
+{
+	struct dtld_qp *qp = to_dtld_qp(ibqp);
 
-// 	dtld_qp_to_init(qp, init);
-// 	dtld_qp_to_attr(qp, attr, mask);
+	dtld_qp_to_init(qp, init);
+	dtld_qp_to_attr(qp, attr, mask);
 
-// 	return 0;
-// }
+	return 0;
+}
 
-// static int dtld_destroy_qp(struct ib_qp *ibqp, struct ib_udata *udata)
-// {
-// 	struct dtld_qp *qp = to_rqp(ibqp);
-// 	int ret;
+static int dtld_destroy_qp(struct ib_qp *ibqp, struct ib_udata *udata)
+{
+	struct dtld_qp *qp = to_dtld_qp(ibqp);
+	int ret;
 
-// 	ret = dtld_qp_chk_destroy(qp);
-// 	if (ret)
-// 		return ret;
+	ret = dtld_qp_chk_destroy(qp);
+	if (ret)
+		return ret;
 
-// 	dtld_put(qp);
-// 	return 0;
-// }
+	dtld_put(qp);
+	return 0;
+}
 
 // static int validate_send_wr(struct dtld_qp *qp, const struct ib_send_wr *ibwr,
 // 			    unsigned int mask, unsigned int length)
@@ -1048,7 +1048,7 @@ static const struct ib_device_ops dtld_dev_ops = {
 	// .dereg_mr = dtld_dereg_mr,
 	// .destroy_ah = dtld_destroy_ah,
 	.destroy_cq = dtld_destroy_cq,
-	// .destroy_qp = dtld_destroy_qp,
+	.destroy_qp = dtld_destroy_qp,
 	// .destroy_srq = dtld_destroy_srq,
 	// .detach_mcast = dtld_detach_mcast,
 	// .device_group = &dtld_attr_group,
@@ -1062,7 +1062,7 @@ static const struct ib_device_ops dtld_dev_ops = {
 	// .modify_ah = dtld_modify_ah,
 	// .modify_device = dtld_modify_device,
 	// .modify_port = dtld_modify_port,
-	// .modify_qp = dtld_modify_qp,
+	.modify_qp = dtld_modify_qp,
 	// .modify_srq = dtld_modify_srq,
 	// .peek_cq = dtld_peek_cq,
 	// .poll_cq = dtld_poll_cq,
@@ -1073,7 +1073,7 @@ static const struct ib_device_ops dtld_dev_ops = {
 	.query_device = dtld_query_device,
 	// .query_pkey = dtld_query_pkey,
 	.query_port = dtld_query_port,
-	// .query_qp = dtld_query_qp,
+	.query_qp = dtld_query_qp,
 	// .query_srq = dtld_query_srq,
 	.reg_user_mr = dtld_reg_user_mr,
 	// .req_notify_cq = dtld_req_notify_cq,

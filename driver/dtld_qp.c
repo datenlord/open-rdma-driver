@@ -361,31 +361,31 @@ err1:
 	return err;
 }
 
-// /* called by the query qp verb */
-// int dtld_qp_to_init(struct dtld_qp *qp, struct ib_qp_init_attr *init)
-// {
-// 	init->event_handler		= qp->ibqp.event_handler;
-// 	init->qp_context		= qp->ibqp.qp_context;
-// 	init->send_cq			= qp->ibqp.send_cq;
-// 	init->recv_cq			= qp->ibqp.recv_cq;
-// 	init->srq			= qp->ibqp.srq;
+/* called by the query qp verb */
+int dtld_qp_to_init(struct dtld_qp *qp, struct ib_qp_init_attr *init)
+{
+	init->event_handler		= qp->ibqp.event_handler;
+	init->qp_context		= qp->ibqp.qp_context;
+	init->send_cq			= qp->ibqp.send_cq;
+	init->recv_cq			= qp->ibqp.recv_cq;
+	init->srq			= qp->ibqp.srq;
 
-// 	init->cap.max_send_wr		= qp->sq.max_wr;
-// 	init->cap.max_send_sge		= qp->sq.max_sge;
-// 	init->cap.max_inline_data	= qp->sq.max_inline;
+	init->cap.max_send_wr		= qp->sq.max_wr;
+	init->cap.max_send_sge		= qp->sq.max_sge;
+	init->cap.max_inline_data	= qp->sq.max_inline;
 
-// 	if (!qp->srq) {
-// 		init->cap.max_recv_wr		= qp->rq.max_wr;
-// 		init->cap.max_recv_sge		= qp->rq.max_sge;
-// 	}
+	if (!qp->srq) {
+		init->cap.max_recv_wr		= qp->rq.max_wr;
+		init->cap.max_recv_sge		= qp->rq.max_sge;
+	}
 
-// 	init->sq_sig_type		= qp->sq_sig_type;
+	init->sq_sig_type		= qp->sq_sig_type;
 
-// 	init->qp_type			= qp->ibqp.qp_type;
-// 	init->port_num			= 1;
+	init->qp_type			= qp->ibqp.qp_type;
+	init->port_num			= 1;
 
-// 	return 0;
-// }
+	return 0;
+}
 
 /* called by the modify qp verb, this routine checks all the parameters before
  * making any changes
@@ -721,55 +721,55 @@ int dtld_qp_from_attr(struct dtld_qp *qp, struct ib_qp_attr *attr, int mask,
 	return 0;
 }
 
-// /* called by the query qp verb */
-// int dtld_qp_to_attr(struct dtld_qp *qp, struct ib_qp_attr *attr, int mask)
-// {
-// 	*attr = qp->attr;
+/* called by the query qp verb */
+int dtld_qp_to_attr(struct dtld_qp *qp, struct ib_qp_attr *attr, int mask)
+{
+	*attr = qp->attr;
 
-// 	attr->rq_psn				= qp->resp.psn;
-// 	attr->sq_psn				= qp->req.psn;
+	attr->rq_psn				= qp->resp.psn;
+	attr->sq_psn				= qp->req.psn;
 
-// 	attr->cap.max_send_wr			= qp->sq.max_wr;
-// 	attr->cap.max_send_sge			= qp->sq.max_sge;
-// 	attr->cap.max_inline_data		= qp->sq.max_inline;
+	attr->cap.max_send_wr			= qp->sq.max_wr;
+	attr->cap.max_send_sge			= qp->sq.max_sge;
+	attr->cap.max_inline_data		= qp->sq.max_inline;
 
-// 	if (!qp->srq) {
-// 		attr->cap.max_recv_wr		= qp->rq.max_wr;
-// 		attr->cap.max_recv_sge		= qp->rq.max_sge;
-// 	}
+	if (!qp->srq) {
+		attr->cap.max_recv_wr		= qp->rq.max_wr;
+		attr->cap.max_recv_sge		= qp->rq.max_sge;
+	}
 
-// 	dtld_av_to_attr(&qp->pri_av, &attr->ah_attr);
-// 	dtld_av_to_attr(&qp->alt_av, &attr->alt_ah_attr);
+	dtld_av_to_attr(&qp->pri_av, &attr->ah_attr);
+	dtld_av_to_attr(&qp->alt_av, &attr->alt_ah_attr);
 
-// 	if (qp->req.state == QP_STATE_DRAIN) {
-// 		attr->sq_draining = 1;
-// 		/* applications that get this state
-// 		 * typically spin on it. yield the
-// 		 * processor
-// 		 */
-// 		cond_resched();
-// 	} else {
-// 		attr->sq_draining = 0;
-// 	}
+	if (qp->req.state == QP_STATE_DRAIN) {
+		attr->sq_draining = 1;
+		/* applications that get this state
+		 * typically spin on it. yield the
+		 * processor
+		 */
+		cond_resched();
+	} else {
+		attr->sq_draining = 0;
+	}
 
-// 	pr_debug("attr->sq_draining = %d\n", attr->sq_draining);
+	pr_debug("attr->sq_draining = %d\n", attr->sq_draining);
 
-// 	return 0;
-// }
+	return 0;
+}
 
-// int dtld_qp_chk_destroy(struct dtld_qp *qp)
-// {
-// 	/* See IBA o10-2.2.3
-// 	 * An attempt to destroy a QP while attached to a mcast group
-// 	 * will fail immediately.
-// 	 */
-// 	if (atomic_read(&qp->mcg_num)) {
-// 		pr_debug("Attempt to destroy QP while attached to multicast group\n");
-// 		return -EBUSY;
-// 	}
+int dtld_qp_chk_destroy(struct dtld_qp *qp)
+{
+	/* See IBA o10-2.2.3
+	 * An attempt to destroy a QP while attached to a mcast group
+	 * will fail immediately.
+	 */
+	if (atomic_read(&qp->mcg_num)) {
+		pr_debug("Attempt to destroy QP while attached to multicast group\n");
+		return -EBUSY;
+	}
 
-// 	return 0;
-// }
+	return 0;
+}
 
 /* called when the last reference to the qp is dropped */
 static void dtld_qp_do_cleanup(struct work_struct *work)
