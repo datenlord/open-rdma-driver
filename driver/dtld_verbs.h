@@ -1,11 +1,9 @@
 #ifndef DTLD_VERBS_H
 #define DTLD_VERBS_H
 
-#include <linux/interrupt.h>
-#include <linux/workqueue.h>
-#include "rdma/rdma_user_dtld.h"
 #include "dtld_pool.h"
 #include "dtld_task.h"
+#include "dtld_queue.h"
 
 struct dtld_port {
 	struct ib_port_attr	attr;

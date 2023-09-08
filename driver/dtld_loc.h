@@ -126,10 +126,10 @@ static inline enum ib_qp_type qp_type(struct dtld_qp *qp)
 	return qp->ibqp.qp_type;
 }
 
-// static inline enum ib_qp_state qp_state(struct dtld_qp *qp)
-// {
-// 	return qp->attr.qp_state;
-// }
+static inline enum ib_qp_state qp_state(struct dtld_qp *qp)
+{
+	return qp->attr.qp_state;
+}
 
 // static inline int qp_mtu(struct dtld_qp *qp)
 // {

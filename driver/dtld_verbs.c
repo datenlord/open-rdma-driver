@@ -237,50 +237,50 @@ static int dtld_dealloc_pd(struct ib_pd *ibpd, struct ib_udata *udata)
 // 	return 0;
 // }
 
-// static int post_one_recv(struct dtld_rq *rq, const struct ib_recv_wr *ibwr)
-// {
-// 	int err;
-// 	int i;
-// 	u32 length;
-// 	struct dtld_recv_wqe *recv_wqe;
-// 	int num_sge = ibwr->num_sge;
-// 	int full;
+static int post_one_recv(struct dtld_rq *rq, const struct ib_recv_wr *ibwr)
+{
+	int err;
+	int i;
+	u32 length;
+	struct dtld_recv_wqe *recv_wqe;
+	int num_sge = ibwr->num_sge;
+	int full;
 
-// 	full = queue_full(rq->queue, QUEUE_TYPE_TO_DRIVER);
-// 	if (unlikely(full)) {
-// 		err = -ENOMEM;
-// 		goto err1;
-// 	}
+	full = queue_full(rq->queue, QUEUE_TYPE_TO_DRIVER);
+	if (unlikely(full)) {
+		err = -ENOMEM;
+		goto err1;
+	}
 
-// 	if (unlikely(num_sge > rq->max_sge)) {
-// 		err = -EINVAL;
-// 		goto err1;
-// 	}
+	if (unlikely(num_sge > rq->max_sge)) {
+		err = -EINVAL;
+		goto err1;
+	}
 
-// 	length = 0;
-// 	for (i = 0; i < num_sge; i++)
-// 		length += ibwr->sg_list[i].length;
+	length = 0;
+	for (i = 0; i < num_sge; i++)
+		length += ibwr->sg_list[i].length;
 
-// 	recv_wqe = queue_producer_addr(rq->queue, QUEUE_TYPE_TO_DRIVER);
-// 	recv_wqe->wr_id = ibwr->wr_id;
-// 	recv_wqe->num_sge = num_sge;
+	recv_wqe = queue_producer_addr(rq->queue, QUEUE_TYPE_TO_DRIVER);
+	recv_wqe->wr_id = ibwr->wr_id;
+	recv_wqe->num_sge = num_sge;
 
-// 	memcpy(recv_wqe->dma.sge, ibwr->sg_list,
-// 	       num_sge * sizeof(struct ib_sge));
+	memcpy(recv_wqe->dma.sge, ibwr->sg_list,
+	       num_sge * sizeof(struct ib_sge));
 
-// 	recv_wqe->dma.length		= length;
-// 	recv_wqe->dma.resid		= length;
-// 	recv_wqe->dma.num_sge		= num_sge;
-// 	recv_wqe->dma.cur_sge		= 0;
-// 	recv_wqe->dma.sge_offset	= 0;
+	recv_wqe->dma.length		= length;
+	recv_wqe->dma.resid		= length;
+	recv_wqe->dma.num_sge		= num_sge;
+	recv_wqe->dma.cur_sge		= 0;
+	recv_wqe->dma.sge_offset	= 0;
 
-// 	queue_advance_producer(rq->queue, QUEUE_TYPE_TO_DRIVER);
+	queue_advance_producer(rq->queue, QUEUE_TYPE_TO_DRIVER);
 
-// 	return 0;
+	return 0;
 
-// err1:
-// 	return err;
-// }
+err1:
+	return err;
+}
 
 // static int dtld_create_srq(struct ib_srq *ibsrq, struct ib_srq_init_attr *init,
 // 			  struct ib_udata *udata)
@@ -726,45 +726,45 @@ static int dtld_destroy_qp(struct ib_qp *ibqp, struct ib_udata *udata)
 // 		return dtld_post_send_kernel(qp, wr, bad_wr);
 // }
 
-// static int dtld_post_recv(struct ib_qp *ibqp, const struct ib_recv_wr *wr,
-// 			 const struct ib_recv_wr **bad_wr)
-// {
-// 	int err = 0;
-// 	struct dtld_qp *qp = to_rqp(ibqp);
-// 	struct dtld_rq *rq = &qp->rq;
-// 	unsigned long flags;
+static int dtld_post_recv(struct ib_qp *ibqp, const struct ib_recv_wr *wr,
+			 const struct ib_recv_wr **bad_wr)
+{
+	int err = 0;
+	struct dtld_qp *qp = to_dtld_qp(ibqp);
+	struct dtld_rq *rq = &qp->rq;
+	unsigned long flags;
 
-// 	if (unlikely((qp_state(qp) < IB_QPS_INIT) || !qp->valid)) {
-// 		*bad_wr = wr;
-// 		err = -EINVAL;
-// 		goto err1;
-// 	}
+	if (unlikely((qp_state(qp) < IB_QPS_INIT) || !qp->valid)) {
+		*bad_wr = wr;
+		err = -EINVAL;
+		goto err1;
+	}
 
-// 	if (unlikely(qp->srq)) {
-// 		*bad_wr = wr;
-// 		err = -EINVAL;
-// 		goto err1;
-// 	}
+	if (unlikely(qp->srq)) {
+		*bad_wr = wr;
+		err = -EINVAL;
+		goto err1;
+	}
 
-// 	spin_lock_irqsave(&rq->producer_lock, flags);
+	spin_lock_irqsave(&rq->producer_lock, flags);
 
-// 	while (wr) {
-// 		err = post_one_recv(rq, wr);
-// 		if (unlikely(err)) {
-// 			*bad_wr = wr;
-// 			break;
-// 		}
-// 		wr = wr->next;
-// 	}
+	while (wr) {
+		err = post_one_recv(rq, wr);
+		if (unlikely(err)) {
+			*bad_wr = wr;
+			break;
+		}
+		wr = wr->next;
+	}
 
-// 	spin_unlock_irqrestore(&rq->producer_lock, flags);
+	spin_unlock_irqrestore(&rq->producer_lock, flags);
 
-// 	if (qp->resp.state == QP_STATE_ERROR)
-// 		dtld_run_task(&qp->resp.task, 1);
+	if (qp->resp.state == QP_STATE_ERROR)
+		dtld_run_task(&qp->resp.task, 1);
 
-// err1:
-// 	return err;
-// }
+err1:
+	return err;
+}
 
 static int dtld_create_cq(struct ib_cq *ibcq, const struct ib_cq_init_attr *attr,
 			 struct ib_udata *udata)
@@ -1066,7 +1066,7 @@ static const struct ib_device_ops dtld_dev_ops = {
 	// .modify_srq = dtld_modify_srq,
 	// .peek_cq = dtld_peek_cq,
 	// .poll_cq = dtld_poll_cq,
-	// .post_recv = dtld_post_recv,
+	.post_recv = dtld_post_recv,
 	// .post_send = dtld_post_send,
 	// .post_srq_recv = dtld_post_srq_recv,
 	// .query_ah = dtld_query_ah,
