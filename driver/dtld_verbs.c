@@ -839,36 +839,36 @@ static int dtld_destroy_cq(struct ib_cq *ibcq, struct ib_udata *udata)
 // 	return err;
 // }
 
-// static int dtld_poll_cq(struct ib_cq *ibcq, int num_entries, struct ib_wc *wc)
-// {
-// 	int i;
-// 	struct dtld_cq *cq = to_rcq(ibcq);
-// 	struct dtld_cqe *cqe;
-// 	unsigned long flags;
+static int dtld_poll_cq(struct ib_cq *ibcq, int num_entries, struct ib_wc *wc)
+{
+	int i;
+	struct dtld_cq *cq = to_dtld_cq(ibcq);
+	struct dtld_cqe *cqe;
+	unsigned long flags;
 
-// 	spin_lock_irqsave(&cq->cq_lock, flags);
-// 	for (i = 0; i < num_entries; i++) {
-// 		cqe = queue_head(cq->queue, QUEUE_TYPE_FROM_DRIVER);
-// 		if (!cqe)
-// 			break;
+	spin_lock_irqsave(&cq->cq_lock, flags);
+	for (i = 0; i < num_entries; i++) {
+		cqe = queue_head(cq->queue, QUEUE_TYPE_FROM_DRIVER);
+		if (!cqe)
+			break;
 
-// 		memcpy(wc++, &cqe->ibwc, sizeof(*wc));
-// 		queue_advance_consumer(cq->queue, QUEUE_TYPE_FROM_DRIVER);
-// 	}
-// 	spin_unlock_irqrestore(&cq->cq_lock, flags);
+		memcpy(wc++, &cqe->ibwc, sizeof(*wc));
+		queue_advance_consumer(cq->queue, QUEUE_TYPE_FROM_DRIVER);
+	}
+	spin_unlock_irqrestore(&cq->cq_lock, flags);
 
-// 	return i;
-// }
+	return i;
+}
 
-// static int dtld_peek_cq(struct ib_cq *ibcq, int wc_cnt)
-// {
-// 	struct dtld_cq *cq = to_rcq(ibcq);
-// 	int count;
+static int dtld_peek_cq(struct ib_cq *ibcq, int wc_cnt)
+{
+	struct dtld_cq *cq = to_dtld_cq(ibcq);
+	int count;
 
-// 	count = queue_count(cq->queue, QUEUE_TYPE_FROM_DRIVER);
+	count = queue_count(cq->queue, QUEUE_TYPE_FROM_DRIVER);
 
-// 	return (count > wc_cnt) ? wc_cnt : count;
-// }
+	return (count > wc_cnt) ? wc_cnt : count;
+}
 
 // static int dtld_req_notify_cq(struct ib_cq *ibcq, enum ib_cq_notify_flags flags)
 // {
@@ -1064,8 +1064,8 @@ static const struct ib_device_ops dtld_dev_ops = {
 	// .modify_port = dtld_modify_port,
 	.modify_qp = dtld_modify_qp,
 	// .modify_srq = dtld_modify_srq,
-	// .peek_cq = dtld_peek_cq,
-	// .poll_cq = dtld_poll_cq,
+	.peek_cq = dtld_peek_cq,
+	.poll_cq = dtld_poll_cq,
 	.post_recv = dtld_post_recv,
 	.post_send = dtld_post_send,
 	// .post_srq_recv = dtld_post_srq_recv,
