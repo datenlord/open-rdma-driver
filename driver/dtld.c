@@ -54,7 +54,7 @@ static void dtld_init_device_param(struct dtld_dev *dtld)
 /* init pools of managed objects */
 static void dtld_init_pools(struct dtld_dev *dtld)
 {
-	// dtld_pool_init(dtld, &dtld->uc_pool, DTLD_TYPE_UC);
+	dtld_pool_init(dtld, &dtld->uc_pool, DTLD_TYPE_UC);
 	dtld_pool_init(dtld, &dtld->pd_pool, DTLD_TYPE_PD);
 	dtld_pool_init(dtld, &dtld->ah_pool, DTLD_TYPE_AH);
 	// dtld_pool_init(dtld, &dtld->srq_pool, DTLD_TYPE_SRQ);
