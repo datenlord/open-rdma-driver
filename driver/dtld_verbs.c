@@ -107,10 +107,10 @@ static int dtld_query_port(struct ib_device *dev,
 
 static int dtld_alloc_ucontext(struct ib_ucontext *ibuc, struct ib_udata *udata)
 {
-	// struct dtld_dev *rxe = dtld_from_ibdev(ibuc->device);
-	// struct dtld_ucontext *uc = to_ruc(ibuc);
+	struct dtld_dev *rxe = dtld_from_ibdev(ibuc->device);
+	struct dtld_ucontext *uc = to_dtld_uc(ibuc);
 
-	// return dtld_add_to_pool(&rxe->uc_pool, uc);
+	return dtld_add_to_pool(&rxe->uc_pool, uc);
 
 	return 0;
 }

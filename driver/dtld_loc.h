@@ -81,7 +81,7 @@ int dtld_mr_init_user(struct dtld_pd *pd, u64 start, u64 length, u64 iova,
 // int dtld_reg_fast_mr(struct dtld_qp *qp, struct dtld_send_wqe *wqe);
 // int dtld_mr_set_page(struct ib_mr *ibmr, u64 addr);
 // int dtld_dereg_mr(struct ib_mr *ibmr, struct ib_udata *udata);
-// void dtld_mr_cleanup(struct dtld_pool_elem *elem);
+void dtld_mr_cleanup(struct dtld_pool_elem *elem);
 
 // /* dtld_mw.c */
 // int dtld_alloc_mw(struct ib_mw *ibmw, struct ib_udata *udata);

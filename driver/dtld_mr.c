@@ -65,16 +65,16 @@ static void dtld_mr_init(int access, struct dtld_mr *mr)
 	// mr->map_shift = ilog2(DTLD_BUF_PER_MAP);
 }
 
-// static void dtld_mr_free_map_set(int num_map, struct dtld_map_set *set)
-// {
-// 	int i;
+static void dtld_mr_free_map_set(int num_map, struct dtld_map_set *set)
+{
+	int i;
 
-// 	for (i = 0; i < num_map; i++)
-// 		kfree(set->map[i]);
+	for (i = 0; i < num_map; i++)
+		kfree(set->map[i]);
 
-// 	kfree(set->map);
-// 	kfree(set);
-// }
+	kfree(set->map);
+	kfree(set);
+}
 
 // static int dtld_mr_alloc_map_set(int num_map, struct dtld_map_set **setp)
 // {
@@ -692,17 +692,17 @@ err_out:
 // 	return 0;
 // }
 
-// void dtld_mr_cleanup(struct dtld_pool_elem *elem)
-// {
-// 	struct dtld_mr *mr = container_of(elem, typeof(*mr), elem);
+void dtld_mr_cleanup(struct dtld_pool_elem *elem)
+{
+	struct dtld_mr *mr = container_of(elem, typeof(*mr), elem);
 
-// 	dtld_put(mr_pd(mr));
+	dtld_put(dtld_mr_pd(mr));
 
-// 	ib_umem_release(mr->umem);
+	ib_umem_release(mr->umem);
 
-// 	if (mr->cur_map_set)
-// 		dtld_mr_free_map_set(mr->num_map, mr->cur_map_set);
+	if (mr->cur_map_set)
+		dtld_mr_free_map_set(mr->num_map, mr->cur_map_set);
 
-// 	if (mr->next_map_set)
-// 		dtld_mr_free_map_set(mr->num_map, mr->next_map_set);
-// }
+	if (mr->next_map_set)
+		dtld_mr_free_map_set(mr->num_map, mr->next_map_set);
+}

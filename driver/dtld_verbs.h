@@ -22,6 +22,7 @@ struct dtld_dev {
 
 	int			max_inline_data;
 
+	struct dtld_pool		uc_pool;
 	struct dtld_pool		ah_pool;
 	struct dtld_pool		qp_pool;
 	struct dtld_pool		cq_pool;
@@ -258,6 +259,28 @@ struct dtld_qp {
 	struct execute_work	cleanup_work;
 };
 
+#define DTLD_BUF_PER_MAP		(PAGE_SIZE / sizeof(struct dtld_phys_buf))
+
+struct dtld_phys_buf {
+	u64      addr;
+	u64      size;
+};
+
+struct dtld_map {
+	struct dtld_phys_buf	buf[DTLD_BUF_PER_MAP];
+};
+
+struct dtld_map_set {
+	struct dtld_map		**map;
+	u64			va;
+	u64			iova;
+	size_t			length;
+	u32			offset;
+	u32			nbuf;
+	int			page_shift;
+	int			page_mask;
+};
+
 enum dtld_mr_state {
 	DTLD_MR_STATE_INVALID,
 	DTLD_MR_STATE_FREE,
@@ -290,6 +313,11 @@ struct dtld_mr {
 	struct dtld_map_set	*next_map_set;
 };
 
+static inline struct dtld_ucontext *to_dtld_uc(struct ib_ucontext *uc)
+{
+	return uc ? container_of(uc, struct dtld_ucontext, ibuc) : NULL;
+}
+
 static inline struct dtld_ah *to_dtld_ah(struct ib_ah *ah)
 {
 	return ah ? container_of(ah, struct dtld_ah, ibah) : NULL;
@@ -318,6 +346,11 @@ static inline struct dtld_pd *to_dtld_pd(struct ib_pd *pd)
 static inline struct dtld_dev *dtld_from_ibdev(struct ib_device *dev)
 {
 	return dev ? container_of(dev, struct dtld_dev, ib_dev) : NULL;
+}
+
+static inline struct dtld_pd *dtld_mr_pd(struct dtld_mr *mr)
+{
+	return to_dtld_pd(mr->ibmr.pd);
 }
 
 static inline struct dtld_pd *dtld_ah_pd(struct dtld_ah *ah)
