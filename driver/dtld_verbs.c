@@ -766,6 +766,21 @@ err1:
 	return err;
 }
 
+static int get_cq_ucmd(struct dtld_dev *dtld, struct ib_udata *udata,
+		       struct dtld_create_cq_req *ucmd)
+{
+	struct ib_device *ib_dev = &dtld->ib_dev;
+	int ret;
+
+	ret = ib_copy_from_udata(ucmd, udata, min(udata->inlen, sizeof(*ucmd)));
+	if (ret) {
+		ibdev_err(ib_dev, "failed to copy CQ udata, ret = %d.\n", ret);
+		return ret;
+	}
+
+	return 0;
+}
+
 static int dtld_create_cq(struct ib_cq *ibcq, const struct ib_cq_init_attr *attr,
 			 struct ib_udata *udata)
 {
@@ -773,9 +788,13 @@ static int dtld_create_cq(struct ib_cq *ibcq, const struct ib_cq_init_attr *attr
 	struct ib_device *dev = ibcq->device;
 	struct dtld_dev *dtld = dtld_from_ibdev(dev);
 	struct dtld_cq *cq = to_dtld_cq(ibcq);
+	struct dtld_create_cq_req ucmd = {};
 	struct dtld_create_cq_resp __user *uresp = NULL;
 
 	if (udata) {
+		err = get_cq_ucmd(dtld, udata, &ucmd);
+		if (err)
+			return err;
 		if (udata->outlen < sizeof(*uresp))
 			return -EINVAL;
 		uresp = udata->outbuf;

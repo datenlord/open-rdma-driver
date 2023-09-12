@@ -69,13 +69,14 @@ int dtld_cq_from_init(struct dtld_dev *dtld, struct dtld_cq *cq, int cqe,
 		return -ENOMEM;
 	}
 
-	err = do_mmap_info(dtld, uresp ? &uresp->mi : NULL, udata,
-			   cq->queue->buf, cq->queue->buf_size, &cq->queue->ip);
-	if (err) {
-		vfree(cq->queue->buf);
-		kfree(cq->queue);
-		return err;
-	}
+	// TODO: delete me
+	// err = do_mmap_info(dtld, uresp ? &uresp->mi : NULL, udata,
+	// 		   cq->queue->buf, cq->queue->buf_size, &cq->queue->ip);
+	// if (err) {
+	// 	vfree(cq->queue->buf);
+	// 	kfree(cq->queue);
+	// 	return err;
+	// }
 
 	cq->is_user = uresp;
 

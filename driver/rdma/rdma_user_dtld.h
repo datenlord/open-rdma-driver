@@ -176,8 +176,16 @@ struct dtld_create_ah_resp {
 	__u32 reserved;
 };
 
+struct dtld_create_cq_req {
+	__aligned_u64 buf_addr;
+	__aligned_u64 db_addr;
+	__u32 cqe_size;
+	__u32 reserved;
+};
+
 struct dtld_create_cq_resp {
-	struct mminfo mi;
+	__aligned_u64 cqn; /* Only 32 bits used, 64 for compat */
+	__aligned_u64 cap_flags;
 };
 
 struct dtld_resize_cq_resp {
