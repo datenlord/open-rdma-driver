@@ -679,18 +679,18 @@ err_out:
 // 	return 0;
 // }
 
-// int dtld_dereg_mr(struct ib_mr *ibmr, struct ib_udata *udata)
-// {
-// 	struct dtld_mr *mr = to_rmr(ibmr);
+int dtld_dereg_mr(struct ib_mr *ibmr, struct ib_udata *udata)
+{
+	struct dtld_mr *mr = to_dtld_mr(ibmr);
 
-// 	/* See IBA 10.6.7.2.6 */
-// 	if (atomic_read(&mr->num_mw) > 0)
-// 		return -EINVAL;
+	/* See IBA 10.6.7.2.6 */
+	if (atomic_read(&mr->num_mw) > 0)
+		return -EINVAL;
 
-// 	dtld_put(mr);
+	dtld_put(mr);
 
-// 	return 0;
-// }
+	return 0;
+}
 
 void dtld_mr_cleanup(struct dtld_pool_elem *elem)
 {

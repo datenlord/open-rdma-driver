@@ -338,6 +338,11 @@ static inline struct dtld_cq *to_dtld_cq(struct ib_cq *cq)
 	return cq ? container_of(cq, struct dtld_cq, ibcq) : NULL;
 }
 
+static inline struct dtld_mr *to_dtld_mr(struct ib_mr *mr)
+{
+	return mr ? container_of(mr, struct dtld_mr, ibmr) : NULL;
+}
+
 static inline struct dtld_pd *to_dtld_pd(struct ib_pd *pd)
 {
 	return pd ? container_of(pd, struct dtld_pd, ibpd) : NULL;
