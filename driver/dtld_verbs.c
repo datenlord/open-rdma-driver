@@ -1094,6 +1094,7 @@ int dtld_register_device(struct dtld_dev *dtld, const char *ibdev_name)
 	struct ib_device *dev = &dtld->ib_dev;
 
 	dev->phys_port_cnt = 1;
+	dev->num_comp_vectors = num_possible_cpus();
 
 	ib_set_device_ops(dev, &dtld_dev_ops);
 
