@@ -554,7 +554,7 @@ void retransmit_timer(struct timer_list *t)
 
 int dtld_completer(void *arg)
 {
-    return 0;
+    return 1;
 // 	struct dtld_qp *qp = (struct dtld_qp *)arg;
 // 	struct dtld_dev *dtld = to_rdev(qp->ibqp.device);
 // 	struct dtld_send_wqe *wqe = NULL;
