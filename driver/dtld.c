@@ -129,6 +129,7 @@ static int probe_one(struct pci_dev *pdev, const struct pci_device_id *id)
 	struct xdma_pci_dev *xpdev = NULL;
 	struct xdma_dev *xdev;
 	void *hndl;
+	pr_info("dtld probe one");
 	xpdev = xpdev_alloc(pdev);
 	if (!xpdev)
 		return -ENOMEM;

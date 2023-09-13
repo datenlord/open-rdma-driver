@@ -2,15 +2,20 @@
 #include <linux/device.h>
 #include <linux/pci.h>
 #include "libxdma.h"
+#include "xdma_thread.h"
 
 /* Module Parameters */
-static unsigned int poll_mode = 0;
+static unsigned int poll_mode = 1;
 // module_param(poll_mode, uint, 0644);
 // MODULE_PARM_DESC(poll_mode, "Set 1 for hw polling, default is 0 (interrupts)");
 
 static unsigned int interrupt_mode = 0;
 // module_param(interrupt_mode, uint, 0644);
 // MODULE_PARM_DESC(interrupt_mode, "0 - Auto , 1 - MSI, 2 - Legacy, 3 - MSI-x");
+static unsigned int enable_st_c2h_credit = 0;
+module_param(enable_st_c2h_credit, uint, 0644);
+MODULE_PARM_DESC(enable_st_c2h_credit,
+	"Set 1 to enable ST C2H engine credit feature, default is 0 ( credit control disabled)");
 
 /*
  * xdma device management
@@ -157,12 +162,12 @@ static int msi_msix_capable(struct pci_dev *dev, int type)
 
 	// ret = arch_msi_check_device(dev, 1, type);
 	// if (ret)
-	return 0;
+	// return 0;
 
-	// if (!pci_find_capability(dev, type))
-		// return 0;
+	if (!pci_find_capability(dev, type))
+		return 0;
 
-	// return 1;
+	return 1;
 }
 
 
@@ -218,6 +223,7 @@ static int enable_msi_msix(struct xdma_dev *xdev, struct pci_dev *pdev)
 	return rv;
 }
 
+/// alloc a dummpy xdma_dev device
 static struct xdma_dev *alloc_dev_instance(struct pci_dev *pdev)
 {
 	int i;
@@ -293,14 +299,12 @@ static inline int xdev_list_add(struct xdma_dev *xdev)
 	if (list_empty(&xdev_list)) {
 		xdev->idx = 0;
 		if (poll_mode) {
-            // TODO: 
-			// int rv = xdma_threads_create(xdev->h2c_channel_max +
-			// 		xdev->c2h_channel_max);
-			// if (rv < 0) {
-			// 	mutex_unlock(&xdev_mutex);
-			// 	return rv;
-			// }
-            BUG();
+			int rv = xdma_threads_create(xdev->h2c_channel_max +
+					xdev->c2h_channel_max);
+			if (rv < 0) {
+				mutex_unlock(&xdev_mutex);
+				return rv;
+			}
 		}
 	} else {
 		struct xdma_dev *last;
@@ -319,6 +323,20 @@ static inline int xdev_list_add(struct xdma_dev *xdev)
 	spin_unlock(&xdev_rcu_lock);
 
 	return 0;
+}
+
+static inline void xdev_list_remove(struct xdma_dev *xdev)
+{
+	mutex_lock(&xdev_mutex);
+	list_del(&xdev->list_head);
+	if (poll_mode && list_empty(&xdev_list))
+		xdma_threads_destroy();
+	mutex_unlock(&xdev_mutex);
+
+	spin_lock(&xdev_rcu_lock);
+	list_del_rcu(&xdev->rcu_node);
+	spin_unlock(&xdev_rcu_lock);
+	synchronize_rcu();
 }
 
 static int request_regions(struct xdma_dev *xdev, struct pci_dev *pdev)
@@ -1104,6 +1122,45 @@ static int engine_service(struct xdma_engine *engine, int desc_writeback)
 	return 0;
 }
 
+int engine_service_poll(struct xdma_engine *engine,
+			       u32 expected_desc_count)
+{
+	u32 desc_wb = 0;
+	unsigned long flags;
+	int rv = 0;
+
+	if (!engine) {
+		pr_err("dma engine NULL\n");
+		return -EINVAL;
+	}
+
+	if (engine->magic != MAGIC_ENGINE) {
+		pr_err("%s has invalid magic number %lx\n", engine->name,
+		       engine->magic);
+		return -EINVAL;
+	}
+
+	// /*
+	//  * Poll the writeback location for the expected number of
+	//  * descriptors / error events This loop is skipped for cyclic mode,
+	//  * where the expected_desc_count passed in is zero, since it cannot be
+	//  * determined before the function is called
+	//  */
+
+	// TODO:engine_service_wb_monitor
+	// desc_wb = engine_service_wb_monitor(engine, expected_desc_count);
+	// if (!desc_wb)
+	// 	return 0;
+
+	spin_lock_irqsave(&engine->lock, flags);
+	dbg_tfr("%s service.\n", engine->name);
+	rv = engine_service(engine, desc_wb);
+	spin_unlock_irqrestore(&engine->lock, flags);
+
+	// return rv;
+	return 0;
+}
+
 /* engine_service_work */
 static void engine_service_work(struct work_struct *work)
 {
@@ -1144,9 +1201,150 @@ unlock:
 	spin_unlock_irqrestore(&engine->lock, flags);
 }
 
+static void engine_free_resource(struct xdma_engine *engine)
+{
+	struct xdma_dev *xdev = engine->xdev;
+
+	/* Release memory use for descriptor writebacks */
+	if (engine->poll_mode_addr_virt) {
+		dbg_sg("Releasing memory for descriptor writeback\n");
+		dma_free_coherent(&xdev->pdev->dev, sizeof(struct xdma_poll_wb),
+				  engine->poll_mode_addr_virt,
+				  engine->poll_mode_bus);
+		dbg_sg("Released memory for descriptor writeback\n");
+		engine->poll_mode_addr_virt = NULL;
+	}
+
+	if (engine->desc) {
+		dbg_init("device %s, engine %s pre-alloc desc 0x%p,0x%llx.\n",
+			 dev_name(&xdev->pdev->dev), engine->name, engine->desc,
+			 engine->desc_bus);
+		dma_free_coherent(&xdev->pdev->dev,
+				  engine->desc_max * sizeof(struct xdma_desc),
+				  engine->desc, engine->desc_bus);
+		engine->desc = NULL;
+	}
+
+	if (engine->cyclic_result) {
+		dma_free_coherent(
+			&xdev->pdev->dev,
+			engine->desc_max * sizeof(struct xdma_result),
+			engine->cyclic_result, engine->cyclic_result_bus);
+		engine->cyclic_result = NULL;
+	}
+}
+
 static int engine_alloc_resource(struct xdma_engine *engine)
 {
-	//TODO: engine
+	struct xdma_dev *xdev = engine->xdev;
+
+	engine->desc = dma_alloc_coherent(&xdev->pdev->dev,
+					  engine->desc_max *
+						  sizeof(struct xdma_desc),
+					  &engine->desc_bus, GFP_KERNEL);
+	if (!engine->desc) {
+		pr_warn("dev %s, %s pre-alloc desc OOM.\n",
+			dev_name(&xdev->pdev->dev), engine->name);
+		goto err_out;
+	}
+
+	if (poll_mode) {
+		engine->poll_mode_addr_virt =
+			dma_alloc_coherent(&xdev->pdev->dev,
+					   sizeof(struct xdma_poll_wb),
+					   &engine->poll_mode_bus, GFP_KERNEL);
+		if (!engine->poll_mode_addr_virt) {
+			pr_warn("%s, %s poll pre-alloc writeback OOM.\n",
+				dev_name(&xdev->pdev->dev), engine->name);
+			goto err_out;
+		}
+	}
+
+	if (engine->streaming && engine->dir == DMA_FROM_DEVICE) {
+		engine->cyclic_result = dma_alloc_coherent(
+			&xdev->pdev->dev,
+			engine->desc_max * sizeof(struct xdma_result),
+			&engine->cyclic_result_bus, GFP_KERNEL);
+
+		if (!engine->cyclic_result) {
+			pr_warn("%s, %s pre-alloc result OOM.\n",
+				dev_name(&xdev->pdev->dev), engine->name);
+			goto err_out;
+		}
+	}
+
+	return 0;
+err_out:
+	engine_free_resource(engine);
+	return -ENOMEM;
+}
+
+static void engine_alignments(struct xdma_engine *engine)
+{
+	u32 w;
+	u32 align_bytes;
+	u32 granularity_bytes;
+	u32 address_bits;
+
+	w = read_register(&engine->regs->alignments);
+	dbg_init("engine %p name %s alignments=0x%08x\n", engine, engine->name,
+		 (int)w);
+
+	align_bytes = (w & 0x00ff0000U) >> 16;
+	granularity_bytes = (w & 0x0000ff00U) >> 8;
+	address_bits = (w & 0x000000ffU);
+
+	dbg_init("align_bytes = %d\n", align_bytes);
+	dbg_init("granularity_bytes = %d\n", granularity_bytes);
+	dbg_init("address_bits = %d\n", address_bits);
+
+	if (w) {
+		engine->addr_align = align_bytes;
+		engine->len_granularity = granularity_bytes;
+		engine->addr_bits = address_bits;
+	} else {
+		/* Some default values if alignments are unspecified */
+		engine->addr_align = 1;
+		engine->len_granularity = 1;
+		engine->addr_bits = 64;
+	}
+}
+
+static int engine_writeback_setup(struct xdma_engine *engine)
+{
+	u32 w;
+	struct xdma_dev *xdev;
+	struct xdma_poll_wb *writeback;
+
+	if (!engine) {
+		pr_err("dma engine NULL\n");
+		return -EINVAL;
+	}
+
+	xdev = engine->xdev;
+	if (!xdev) {
+		pr_err("Invalid xdev\n");
+		return -EINVAL;
+	}
+
+	/*
+	 * better to allocate one page for the whole device during probe()
+	 * and set per-engine offsets here
+	 */
+	writeback = (struct xdma_poll_wb *)engine->poll_mode_addr_virt;
+	writeback->completed_desc_count = 0;
+
+	dbg_init("Setting writeback location to 0x%llx for engine %p",
+		 engine->poll_mode_bus, engine);
+	w = cpu_to_le32(PCI_DMA_L(engine->poll_mode_bus));
+	write_register(w, &engine->regs->poll_mode_wb_lo,
+		       (unsigned long)(&engine->regs->poll_mode_wb_lo) -
+			       (unsigned long)(&engine->regs));
+	w = cpu_to_le32(PCI_DMA_H(engine->poll_mode_bus));
+	write_register(w, &engine->regs->poll_mode_wb_hi,
+		       (unsigned long)(&engine->regs->poll_mode_wb_hi) -
+			       (unsigned long)(&engine->regs));
+
 	return 0;
 }
 
@@ -1163,8 +1361,60 @@ static int engine_alloc_resource(struct xdma_engine *engine)
  */
 static int engine_init_regs(struct xdma_engine *engine)
 {
-	//TODO: engine
+	u32 reg_value;
+	int rv = 0;
+
+	write_register(XDMA_CTRL_NON_INCR_ADDR, &engine->regs->control_w1c,
+		       (unsigned long)(&engine->regs->control_w1c) -
+			       (unsigned long)(&engine->regs));
+
+	engine_alignments(engine);
+
+	/* Configure error interrupts by default */
+	reg_value = XDMA_CTRL_IE_DESC_ALIGN_MISMATCH;
+	reg_value |= XDMA_CTRL_IE_MAGIC_STOPPED;
+	reg_value |= XDMA_CTRL_IE_MAGIC_STOPPED;
+	reg_value |= XDMA_CTRL_IE_READ_ERROR;
+	reg_value |= XDMA_CTRL_IE_DESC_ERROR;
+
+	/* if using polled mode, configure writeback address */
+	if (poll_mode) {
+		rv = engine_writeback_setup(engine);
+		if (rv) {
+			dbg_init("%s descr writeback setup failed.\n",
+				 engine->name);
+			goto fail_wb;
+		}
+	} else {
+		/* enable the relevant completion interrupts */
+		reg_value |= XDMA_CTRL_IE_DESC_STOPPED;
+		reg_value |= XDMA_CTRL_IE_DESC_COMPLETED;
+	}
+
+	/* Apply engine configurations */
+	write_register(reg_value, &engine->regs->interrupt_enable_mask,
+		       (unsigned long)(&engine->regs->interrupt_enable_mask) -
+			       (unsigned long)(&engine->regs));
+
+	engine->interrupt_enable_mask_value = reg_value;
+
+	/* only enable credit mode for AXI-ST C2H */
+	if (enable_st_c2h_credit && engine->streaming &&
+	    engine->dir == DMA_FROM_DEVICE) {
+		struct xdma_dev *xdev = engine->xdev;
+		u32 reg_value = (0x1 << engine->channel) << 16;
+		struct sgdma_common_regs *reg =
+			(struct sgdma_common_regs
+				 *)(xdev->bar[xdev->config_bar_idx] +
+				    (0x6 * TARGET_SPACING));
+
+		write_register(reg_value, &reg->credit_mode_enable_w1s, 0);
+	}
+
 	return 0;
+
+fail_wb:
+	return rv;
 }
 static int engine_init(struct xdma_engine *engine, struct xdma_dev *xdev,
 		       int offset, enum dma_data_direction dir, int channel)
@@ -1204,7 +1454,7 @@ static int engine_init(struct xdma_engine *engine, struct xdma_dev *xdev,
 	//     engine->dir == DMA_FROM_DEVICE)
 	//     	engine->desc_max = XDMA_ENGINE_CREDIT_XFER_MAX_DESC;
 	// else
-	engine->desc_max = XDMA_ENGINE_XFER_MAX_DESC;
+		engine->desc_max = XDMA_ENGINE_XFER_MAX_DESC;
 
 	dbg_init("engine %p name %s irq_bitmask=0x%08x\n", engine, engine->name,
 		 (int)engine->irq_bitmask);
@@ -1226,9 +1476,8 @@ static int engine_init(struct xdma_engine *engine, struct xdma_dev *xdev,
 	if (rv)
 		return rv;
 
-	// TODO: poll mode
-	// if (poll_mode)
-	// 	xdma_thread_add_work(engine);
+	if (poll_mode)
+		xdma_thread_add_work(engine);
 
 	return 0;
 }
@@ -1369,10 +1618,7 @@ void *xdma_device_open(const char *mname, struct pci_dev *pdev, int *user_max,
 	pci_check_intr_pend(pdev);
 
 	/* enable relaxed ordering */
-    pcie_capability_set_word(pdev, PCI_EXP_DEVCTL, PCI_EXP_DEVCTL_RELAX_EN);
-
-	/* enable extended tag */
-    pcie_capability_set_word(pdev, PCI_EXP_DEVCTL, PCI_EXP_DEVCTL_RELAX_EN);
+    pci_enable_capability(pdev, PCI_EXP_DEVCTL_RELAX_EN);
 
 	pci_enable_capability(pdev, PCI_EXP_DEVCTL_EXT_TAG);
 
@@ -1415,6 +1661,7 @@ void *xdma_device_open(const char *mname, struct pci_dev *pdev, int *user_max,
 	if (rv < 0)
 		goto err_msix;
 
+	// TODO: Will not execute
 	if (!poll_mode)
 		channel_interrupts_enable(xdev, ~0);
 
@@ -1435,11 +1682,11 @@ err_engines:
 err_mask:
 	// unmap_bars(xdev, pdev);
 err_map:
-	// if (xdev->got_regions)
-		// pci_release_regions(pdev);
+	if (xdev->got_regions)
+		pci_release_regions(pdev);
 err_regions:
-	// if (!xdev->regions_in_use)
-		// pci_disable_device(pdev);
+	if (!xdev->regions_in_use)
+		pci_disable_device(pdev);
 err_enable:
 	// xdev_list_remove(xdev);
 free_xdev:

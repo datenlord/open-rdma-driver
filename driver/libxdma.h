@@ -39,6 +39,25 @@
 #define XDMA_ENG_IRQ_NUM	(1)
 #define BYPASS_MODE_SPACING 0x0100
 
+/* bits of the SG DMA control register */
+#define XDMA_CTRL_RUN_STOP			(1UL << 0)
+#define XDMA_CTRL_IE_DESC_STOPPED		(1UL << 1)
+#define XDMA_CTRL_IE_DESC_COMPLETED		(1UL << 2)
+#define XDMA_CTRL_IE_DESC_ALIGN_MISMATCH	(1UL << 3)
+#define XDMA_CTRL_IE_MAGIC_STOPPED		(1UL << 4)
+#define XDMA_CTRL_IE_IDLE_STOPPED		(1UL << 6)
+#define XDMA_CTRL_IE_READ_ERROR			(0x1FUL << 9)
+#define XDMA_CTRL_IE_DESC_ERROR			(0x1FUL << 19)
+#define XDMA_CTRL_NON_INCR_ADDR			(1UL << 25)
+#define XDMA_CTRL_POLL_MODE_WB			(1UL << 26)
+#define XDMA_CTRL_STM_MODE_WB			(1UL << 27)
+
+/* obtain the 32 most significant (high) bits of a 32-bit or 64-bit address */
+#define PCI_DMA_H(addr) ((addr >> 16) >> 16)
+/* obtain the 32 least significant (low) bits of a 32-bit or 64-bit address */
+#define PCI_DMA_L(addr) (addr & 0xffffffffUL)
+
+#define TARGET_SPACING 0x1000
 
 
 #ifdef __LIBXDMA_DEBUG__
@@ -74,6 +93,16 @@ enum shutdown_state {
 	ENGINE_SHUTDOWN_REQUEST = 1,	/* engine requested to shutdown */
 	ENGINE_SHUTDOWN_IDLE = 2	/* engine has shutdown and is idle */
 };
+
+/* SECTION: Enum definitions */
+enum transfer_state {
+	TRANSFER_STATE_NEW = 0,
+	TRANSFER_STATE_SUBMITTED,
+	TRANSFER_STATE_COMPLETED,
+	TRANSFER_STATE_FAILED,
+	TRANSFER_STATE_ABORTED
+};
+
 
 struct xdma_io_cb {
 	void __user *buf;
@@ -182,12 +211,56 @@ struct xdma_desc {
 	u32 next_hi;		/* next desc address (high 32-bit) */
 } __packed;
 
+struct sgdma_common_regs {
+	u32 padding[8];
+	u32 credit_mode_enable;
+	u32 credit_mode_enable_w1s;
+	u32 credit_mode_enable_w1c;
+} __packed;
+
+/* Structure for polled mode descriptor writeback */
+struct xdma_poll_wb {
+	u32 completed_desc_count;
+	u32 reserved_1[7];
+} __packed;
+
 /* 32 bytes (four 32-bit words) or 64 bytes (eight 32-bit words) */
 struct xdma_result {
 	u32 status;
 	u32 length;
 	u32 reserved_1[6];	/* padding */
 } __packed;
+
+
+/* Describes a (SG DMA) single transfer for the engine */
+#define XFER_FLAG_NEED_UNMAP		0x1
+#define XFER_FLAG_ST_C2H_EOP_RCVED	0x2	/* ST c2h only */ 
+struct xdma_transfer {
+	struct list_head entry;		/* queue of non-completed transfers */
+	struct xdma_desc *desc_virt;	/* virt addr of the 1st descriptor */
+	struct xdma_result *res_virt;   /* virt addr of result, c2h streaming */
+	dma_addr_t res_bus;		/* bus addr for result descriptors */
+	dma_addr_t desc_bus;		/* bus addr of the first descriptor */
+	int desc_adjacent;		/* adjacent descriptors at desc_bus */
+	int desc_num;			/* number of descriptors in transfer */
+	int desc_index;			/* index for 1st desc. in transfer */
+	int desc_cmpl;			/* completed descriptors */
+	int desc_cmpl_th;		/* completed descriptor threshold */
+	enum dma_data_direction dir;
+#if	HAS_SWAKE_UP
+	struct swait_queue_head wq;
+#else
+	wait_queue_head_t wq;		/* wait queue for transfer completion */
+#endif
+
+	enum transfer_state state;	/* state of the transfer */
+	unsigned int flags;
+	int cyclic;			/* flag if transfer is cyclic */
+	int last_in_request;		/* flag if last within request */
+	unsigned int len;
+	struct sg_table *sgt;
+	struct xdma_io_cb *cb;
+};
 
 struct xdma_dev;
 
@@ -262,9 +335,9 @@ struct xdma_engine {
 // 	wait_queue_head_t xdma_perf_wq;	/* Perf test sync */
 // #endif
 
-	// struct xdma_kthread *cmplthp;
+	struct xdma_kthread *cmplthp;
 	/* completion status thread list for the queue */
-	// struct list_head cmplthp_list;
+	struct list_head cmplthp_list;
 	/* pending work thread list */
 	/* cpu attached to intr_work */
 	unsigned int intr_work_cpu;
@@ -352,5 +425,7 @@ void *xdma_device_open(const char *mname, struct pci_dev *pdev, int *user_max,
 		       int *h2c_channel_max, int *c2h_channel_max) __attribute__((used));
 
 int xdma_user_isr_enable(void *dev_hndl, unsigned int mask);
+
+int engine_service_poll(struct xdma_engine *engine, u32 expected_desc_count);
 
 #endif
