@@ -10,9 +10,6 @@ dtld_ib-y := \
 	dtld_qp.o \
 	dtld_queue.o \
 	dtld_task.o \
-	dtld_req.o \
-	dtld_resp.o \
-	dtld_comp.o \
 	dtld_av.o \
 	dtld_opcode.o \
 

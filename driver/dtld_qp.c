@@ -180,16 +180,11 @@ static void dtld_qp_init_misc(struct dtld_dev *dtld, struct dtld_qp *qp,
 
 static int dtld_qp_init_req(struct dtld_dev *dtld, struct dtld_qp *qp,
 			   struct ib_qp_init_attr *init, struct ib_udata *udata,
-			   struct dtld_create_qp_resp __user *uresp)
+			   struct dtld_uresp_create_qp __user *uresp)
 {
 	int err;
 	int wqe_size;
 	enum queue_type type;
-
-	// err = sock_create_kern(&init_net, AF_INET, SOCK_DGRAM, 0, &qp->sk);
-	// if (err < 0)
-	// 	return err;
-	// qp->sk->sk->sk_user_data = qp;
 
 	/* pick a source UDP port number for this QP based on
 	 * the source QPN. this spreads traffic for different QPs
@@ -215,17 +210,6 @@ static int dtld_qp_init_req(struct dtld_dev *dtld, struct dtld_qp *qp,
 	if (!qp->sq.queue)
 		return -ENOMEM;
 
-	err = do_mmap_info(dtld, uresp ? &uresp->sq_mi : NULL, udata,
-			   qp->sq.queue->buf, qp->sq.queue->buf_size,
-			   &qp->sq.queue->ip);
-
-	if (err) {
-		vfree(qp->sq.queue->buf);
-		kfree(qp->sq.queue);
-		qp->sq.queue = NULL;
-		return err;
-	}
-
 	qp->req.wqe_index = queue_get_producer(qp->sq.queue,
 					       QUEUE_TYPE_FROM_CLIENT);
 
@@ -234,25 +218,14 @@ static int dtld_qp_init_req(struct dtld_dev *dtld, struct dtld_qp *qp,
 	qp->comp.opcode		= -1;
 
 	spin_lock_init(&qp->sq.sq_lock);
-	// skb_queue_head_init(&qp->req_pkts);
 
-	dtld_init_task(dtld, &qp->req.task, qp,
-		      dtld_requester, "req");
-	dtld_init_task(dtld, &qp->comp.task, qp,
-		      dtld_completer, "comp");
-
-	qp->qp_timeout_jiffies = 0; /* Can't be set for UD/UC in modify_qp */
-	if (init->qp_type == IB_QPT_RC) {
-		timer_setup(&qp->rnr_nak_timer, rnr_nak_timer, 0);
-		timer_setup(&qp->retrans_timer, retransmit_timer, 0);
-	}
 	return 0;
 }
 
 static int dtld_qp_init_resp(struct dtld_dev *dtld, struct dtld_qp *qp,
 			    struct ib_qp_init_attr *init,
 			    struct ib_udata *udata,
-			    struct dtld_create_qp_resp __user *uresp)
+			    struct dtld_uresp_create_qp __user *uresp)
 {
 	int err;
 	int wqe_size;
@@ -273,26 +246,12 @@ static int dtld_qp_init_resp(struct dtld_dev *dtld, struct dtld_qp *qp,
 		if (!qp->rq.queue)
 			return -ENOMEM;
 
-		err = do_mmap_info(dtld, uresp ? &uresp->rq_mi : NULL, udata,
-				   qp->rq.queue->buf, qp->rq.queue->buf_size,
-				   &qp->rq.queue->ip);
-		if (err) {
-			vfree(qp->rq.queue->buf);
-			kfree(qp->rq.queue);
-			qp->rq.queue = NULL;
-			return err;
-		}
 	}
 
 	spin_lock_init(&qp->rq.producer_lock);
 	spin_lock_init(&qp->rq.consumer_lock);
 
-	// skb_queue_head_init(&qp->resp_pkts);
 
-	dtld_init_task(dtld, &qp->resp.task, qp,
-		      dtld_responder, "resp");
-
-	// qp->resp.opcode		= OPCODE_NONE;
 	qp->resp.msn		= 0;
 	qp->resp.state		= QP_STATE_RESET;
 
@@ -302,7 +261,7 @@ static int dtld_qp_init_resp(struct dtld_dev *dtld, struct dtld_qp *qp,
 /* called by the create qp verb */
 int dtld_qp_from_init(struct dtld_dev *dtld, struct dtld_qp *qp, struct dtld_pd *pd,
 		     struct ib_qp_init_attr *init,
-		     struct dtld_create_qp_resp __user *uresp,
+		     struct dtld_uresp_create_qp __user *uresp,
 		     struct ib_pd *ibpd,
 		     struct ib_udata *udata)
 {

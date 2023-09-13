@@ -27,7 +27,7 @@ int dtld_cq_chk_attr(struct dtld_dev *dtld, struct dtld_cq *cq,
 
 int dtld_cq_from_init(struct dtld_dev *dtld, struct dtld_cq *cq, int cqe,
 		     int comp_vector, struct ib_udata *udata,
-		     struct dtld_create_cq_resp __user *uresp);
+		     struct dtld_uresp_create_cq __user *uresp);
 
 // int dtld_cq_resize_queue(struct dtld_cq *cq, int new_cqe,
 // 			struct dtld_resize_cq_resp __user *uresp,
@@ -104,7 +104,7 @@ void dtld_mr_cleanup(struct dtld_pool_elem *elem);
 int dtld_qp_chk_init(struct dtld_dev *dtld, struct ib_qp_init_attr *init);
 int dtld_qp_from_init(struct dtld_dev *dtld, struct dtld_qp *qp, struct dtld_pd *pd,
 		     struct ib_qp_init_attr *init,
-		     struct dtld_create_qp_resp __user *uresp,
+		     struct dtld_uresp_create_qp __user *uresp,
 		     struct ib_pd *ibpd, struct ib_udata *udata);
 int dtld_qp_to_init(struct dtld_qp *qp, struct ib_qp_init_attr *init);
 int dtld_qp_chk_attr(struct dtld_dev *dtld, struct dtld_qp *qp,
@@ -171,9 +171,9 @@ void rnr_nak_timer(struct timer_list *t);
 
 // void dtld_dealloc(struct ib_device *ib_dev);
 
-int dtld_completer(void *arg);
-int dtld_requester(void *arg);
-int dtld_responder(void *arg);
+// int dtld_completer(void *arg); // TODO: delete me
+// int dtld_requester(void *arg); // TODO: delete me
+// int dtld_responder(void *arg); // TODO: delete me
 
 // /* dtld_icrc.c */
 // int dtld_icrc_init(struct dtld_dev *dtld);

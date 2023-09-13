@@ -176,25 +176,40 @@ struct dtld_create_ah_resp {
 	__u32 reserved;
 };
 
-struct dtld_create_cq_req {
-	__aligned_u64 buf_addr;
-	__aligned_u64 db_addr;
-	__u32 cqe_size;
-	__u32 reserved;
+struct dtld_ureq_create_cq {
+	__aligned_u64 db_record_va;
+	__aligned_u64 qbuf_va;
+	__u32 qbuf_len;
+	__u32 rsvd0;
 };
 
-struct dtld_create_cq_resp {
-	__aligned_u64 cqn; /* Only 32 bits used, 64 for compat */
-	__aligned_u64 cap_flags;
+struct dtld_uresp_create_cq {
+	__u32 cq_id;
+	__u32 num_cqe;
 };
 
-struct dtld_resize_cq_resp {
-	struct mminfo mi;
+struct dtld_ureq_create_qp {
+	__aligned_u64 db_record_va;
+	__aligned_u64 qbuf_va;
+	__u32 qbuf_len;
+	__u32 rsvd0;
 };
 
-struct dtld_create_qp_resp {
-	struct mminfo rq_mi;
-	struct mminfo sq_mi;
+struct dtld_uresp_create_qp {
+	__u32 qp_id;
+	__u32 num_sqe;
+	__u32 num_rqe;
+	__u32 rq_offset;
+};
+
+struct dtld_uresp_alloc_ctx {
+	__u32 dev_id;
+	__u32 pad;
+	__u32 sdb_type;
+	__u32 sdb_offset;
+	__aligned_u64 sdb;
+	__aligned_u64 rdb;
+	__aligned_u64 cdb;
 };
 
 struct dtld_create_srq_resp {

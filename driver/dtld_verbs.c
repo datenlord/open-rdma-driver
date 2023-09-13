@@ -402,7 +402,7 @@ static int dtld_create_qp(struct ib_qp *ibqp, struct ib_qp_init_attr *init,
 	struct dtld_dev *dtld = dtld_from_ibdev(ibqp->device);
 	struct dtld_pd *pd = to_dtld_pd(ibqp->pd);
 	struct dtld_qp *qp = to_dtld_qp(ibqp);
-	struct dtld_create_qp_resp __user *uresp = NULL;
+	struct dtld_uresp_create_qp __user *uresp = NULL;
 
 	if (udata) {
 		if (udata->outlen < sizeof(*uresp))
@@ -420,10 +420,6 @@ static int dtld_create_qp(struct ib_qp *ibqp, struct ib_qp_init_attr *init,
 	if (udata) {
 		if (udata->inlen)
 			return -EINVAL;
-
-		qp->is_user = true;
-	} else {
-		qp->is_user = false;
 	}
 
 	err = dtld_add_to_pool(&dtld->qp_pool, qp);
@@ -718,12 +714,7 @@ static int dtld_post_send(struct ib_qp *ibqp, const struct ib_send_wr *wr,
 		return -EINVAL;
 	}
 
-	if (qp->is_user) {
-		/* Utilize process context to do protocol processing */
-		dtld_run_task(&qp->req.task, 0);
-		return 0;
-	} else
-		return dtld_post_send_kernel(qp, wr, bad_wr);
+	return 0;
 }
 
 static int dtld_post_recv(struct ib_qp *ibqp, const struct ib_recv_wr *wr,
@@ -767,7 +758,7 @@ err1:
 }
 
 static int get_cq_ucmd(struct dtld_dev *dtld, struct ib_udata *udata,
-		       struct dtld_create_cq_req *ucmd)
+		       struct dtld_ureq_create_cq *ucmd)
 {
 	struct ib_device *ib_dev = &dtld->ib_dev;
 	int ret;
@@ -788,8 +779,8 @@ static int dtld_create_cq(struct ib_cq *ibcq, const struct ib_cq_init_attr *attr
 	struct ib_device *dev = ibcq->device;
 	struct dtld_dev *dtld = dtld_from_ibdev(dev);
 	struct dtld_cq *cq = to_dtld_cq(ibcq);
-	struct dtld_create_cq_req ucmd = {};
-	struct dtld_create_cq_resp __user *uresp = NULL;
+	struct dtld_ureq_create_cq ucmd = {};
+	struct dtld_uresp_create_cq __user *uresp = NULL;
 
 	if (udata) {
 		err = get_cq_ucmd(dtld, udata, &ucmd);

@@ -56,7 +56,7 @@ static void dtld_send_complete(struct tasklet_struct *t)
 
 int dtld_cq_from_init(struct dtld_dev *dtld, struct dtld_cq *cq, int cqe,
 		     int comp_vector, struct ib_udata *udata,
-		     struct dtld_create_cq_resp __user *uresp)
+		     struct dtld_uresp_create_cq __user *uresp)
 {
 	int err;
 	enum queue_type type;
@@ -77,8 +77,6 @@ int dtld_cq_from_init(struct dtld_dev *dtld, struct dtld_cq *cq, int cqe,
 	// 	kfree(cq->queue);
 	// 	return err;
 	// }
-
-	cq->is_user = uresp;
 
 	cq->is_dying = false;
 

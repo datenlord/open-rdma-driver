@@ -125,7 +125,7 @@ struct dtld_ah {
 	struct ib_ah		ibah;
 	struct dtld_pool_elem	elem;
 	struct dtld_av		av;
-	bool			is_user;
+	// bool			is_user;    // TODO delete me
 	int			ah_num;
 };
 
@@ -151,7 +151,7 @@ struct dtld_cq {
 	spinlock_t		cq_lock;
 	u8			notify;
 	bool			is_dying;
-	bool			is_user;
+	// bool			is_user;    // TODO delete me
 	struct tasklet_struct	comp_task;
 	atomic_t		num_wq;
 };
@@ -211,7 +211,7 @@ struct dtld_qp {
 	struct ib_qp_attr	attr;
 	unsigned int		valid;
 	unsigned int		mtu;
-	bool			is_user;
+	// bool			is_user;  // TODO delete me
 
 	struct dtld_pd		*pd;
 	struct dtld_srq		*srq;
