@@ -4,6 +4,11 @@
  * Copyright (c) 2015 System Fabric Works, Inc. All rights reserved.
  */
 
+#include "asm-generic/errno-base.h"
+#include "asm/page_types.h"
+#include "linux/gfp.h"
+#include "linux/slab.h"
+#include "rdma/ib_verbs.h"
 #include "rdma/ib_user_ioctl_verbs.h"
 #include <linux/dma-mapping.h>
 #include <net/addrconf.h>
@@ -11,6 +16,7 @@
 
 #include "dtld.h"
 #include "dtld_verbs.h"
+
 
 static int dtld_query_device(struct ib_device *dev,
 			    struct ib_device_attr *attr,
@@ -780,30 +786,47 @@ static int dtld_create_cq(struct ib_cq *ibcq, const struct ib_cq_init_attr *attr
 	struct dtld_dev *dtld = dtld_from_ibdev(dev);
 	struct dtld_cq *cq = to_dtld_cq(ibcq);
 	struct dtld_ureq_create_cq ucmd = {};
-	struct dtld_uresp_create_cq __user *uresp = NULL;
+	struct dtld_uresp_create_cq uresp = {};
 
 	if (udata) {
 		err = get_cq_ucmd(dtld, udata, &ucmd);
 		if (err)
 			return err;
-		if (udata->outlen < sizeof(*uresp))
+		if (udata->outlen < sizeof(uresp))
 			return -EINVAL;
-		uresp = udata->outbuf;
 	}
 
 	if (attr->flags)
 		return -EOPNOTSUPP;
 
+
 	err = dtld_cq_chk_attr(dtld, NULL, attr->cqe, attr->comp_vector);
 	if (err)
 		return err;
 
-	err = dtld_cq_from_init(dtld, cq, attr->cqe, attr->comp_vector, udata,
-			       uresp);
-	if (err)
+	err = dtld_add_to_pool(&dtld->cq_pool, cq);
+	if (err) 
 		return err;
 
-	return dtld_add_to_pool(&dtld->cq_pool, cq);
+	err = dtld_cq_from_init(dtld, cq, attr->cqe, attr->comp_vector, udata,
+			       &uresp);
+	if (err){
+		goto err_init_cq;
+	}
+
+	err = ib_copy_to_udata(udata, &uresp, sizeof(uresp));
+	if (err)
+		goto err_copy_data_back_to_user;
+
+	return 0;
+
+err_copy_data_back_to_user:
+	rdma_user_mmap_entry_remove(&cq->ummap_ent->rdma_entry);
+
+err_init_cq:
+	dtld_put(cq);
+
+	return err;
 }
 
 static int dtld_destroy_cq(struct ib_cq *ibcq, struct ib_udata *udata)
@@ -1035,6 +1058,24 @@ err2:
 // 	return 0;
 // }
 
+int dtld_mmap(struct ib_ucontext *context, struct vm_area_struct *vma) {
+	int err;
+	struct rdma_user_mmap_entry *ummap_ent;
+	struct dtld_rdma_user_mmap_entry *dtld_ummap_ent;
+	pgprot_t prot;
+
+	ummap_ent = rdma_user_mmap_entry_get(context, vma);
+	if (!ummap_ent)
+		return -EINVAL;
+	dtld_ummap_ent = to_dtld_mmap_entry(ummap_ent);
+
+	prot = pgprot_device(vma->vm_page_prot);
+	err = rdma_user_mmap_io(context, vma, PFN_DOWN(dtld_ummap_ent->address), PAGE_SIZE,
+				prot, ummap_ent);
+
+	return err;
+}
+
 static const struct ib_device_ops dtld_dev_ops = {
 	.owner = THIS_MODULE,
 	.driver_id = RDMA_DRIVER_UNKNOWN,  // TODO: Change this to ourselves' when we have one.
@@ -1068,7 +1109,7 @@ static const struct ib_device_ops dtld_dev_ops = {
 	// .get_link_layer = dtld_get_link_layer,
 	.get_port_immutable = dtld_port_immutable,
 	// .map_mr_sg = dtld_map_mr_sg,
-	// .mmap = dtld_mmap,
+	.mmap = dtld_mmap,
 	// .modify_ah = dtld_modify_ah,
 	// .modify_device = dtld_modify_device,
 	// .modify_port = dtld_modify_port,

@@ -177,15 +177,13 @@ struct dtld_create_ah_resp {
 };
 
 struct dtld_ureq_create_cq {
-	__aligned_u64 db_record_va;
-	__aligned_u64 qbuf_va;
-	__u32 qbuf_len;
-	__u32 rsvd0;
 };
 
 struct dtld_uresp_create_cq {
 	__u32 cq_id;
 	__u32 num_cqe;
+	__aligned_u64 q_offset;
+	__aligned_u64 q_length;
 };
 
 struct dtld_ureq_create_qp {

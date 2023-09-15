@@ -4,9 +4,11 @@
  * Copyright (c) 2015 System Fabric Works, Inc. All rights reserved.
  */
 #include <linux/vmalloc.h>
+#include <rdma/uverbs_ioctl.h>
 #include "dtld.h"
 #include "dtld_loc.h"
 #include "dtld_queue.h"
+#include "rdma/ib_verbs.h"
 
 int dtld_cq_chk_attr(struct dtld_dev *dtld, struct dtld_cq *cq,
 		    int cqe, int comp_vector)
@@ -56,31 +58,44 @@ static void dtld_send_complete(struct tasklet_struct *t)
 
 int dtld_cq_from_init(struct dtld_dev *dtld, struct dtld_cq *cq, int cqe,
 		     int comp_vector, struct ib_udata *udata,
-		     struct dtld_uresp_create_cq __user *uresp)
+		     struct dtld_uresp_create_cq *uresp)
 {
 	int err;
-	enum queue_type type;
+	struct dtld_ucontext *ctx = rdma_udata_to_drv_context(udata, struct dtld_ucontext, ibuc);
+	struct dtld_rdma_user_mmap_entry *ummap_ent;
+	void *fake_dev_mem;
+	u64 mmap_offset;
 
-	type = QUEUE_TYPE_TO_CLIENT;
-	cq->queue = dtld_queue_init(dtld, &cqe,
-			sizeof(struct dtld_cqe), type);
-	if (!cq->queue) {
-		pr_warn("unable to create cq\n");
+
+	// TODO, only for debug usage now, will be replace to mmio bar address in the future. there is memory leak now, i didn't free it.
+	fake_dev_mem = kmalloc(PAGE_SIZE, GFP_KERNEL);
+	if (!fake_dev_mem) 
 		return -ENOMEM;
+
+	ummap_ent = kzalloc(sizeof(*ummap_ent), GFP_KERNEL);
+	if (!ummap_ent) 
+		return -ENOMEM;
+	cq->ummap_ent = ummap_ent;
+
+	ummap_ent->address = (u64)virt_to_phys(fake_dev_mem);
+
+	err = rdma_user_mmap_entry_insert(&ctx->ibuc, &ummap_ent->rdma_entry, PAGE_SIZE);
+	if (err) {
+		kfree(ummap_ent);
+		return err;
 	}
 
-	// TODO: delete me
-	// err = do_mmap_info(dtld, uresp ? &uresp->mi : NULL, udata,
-	// 		   cq->queue->buf, cq->queue->buf_size, &cq->queue->ip);
-	// if (err) {
-	// 	vfree(cq->queue->buf);
-	// 	kfree(cq->queue);
-	// 	return err;
-	// }
+	mmap_offset = rdma_user_mmap_get_offset(&ummap_ent->rdma_entry);
 
-	cq->is_dying = false;
+	// TODO: the hardcoded is only for test, fix me
+	uresp->q_offset = mmap_offset;
+	uresp->q_length = PAGE_SIZE;
+	uresp->num_cqe = 2;
+	uresp->cq_id = cq->elem.index;
 
-	tasklet_setup(&cq->comp_task, dtld_send_complete);
+
+	// cq->is_dying = false;
+	// tasklet_setup(&cq->comp_task, dtld_send_complete);
 
 	spin_lock_init(&cq->cq_lock);
 	cq->ibcq.cqe = cqe;

@@ -27,7 +27,7 @@ int dtld_cq_chk_attr(struct dtld_dev *dtld, struct dtld_cq *cq,
 
 int dtld_cq_from_init(struct dtld_dev *dtld, struct dtld_cq *cq, int cqe,
 		     int comp_vector, struct ib_udata *udata,
-		     struct dtld_uresp_create_cq __user *uresp);
+		     struct dtld_uresp_create_cq *uresp);
 
 // int dtld_cq_resize_queue(struct dtld_cq *cq, int new_cqe,
 // 			struct dtld_resize_cq_resp __user *uresp,
@@ -60,7 +60,6 @@ struct dtld_mmap_info {
 // struct dtld_mmap_info *dtld_create_mmap_info(struct dtld_dev *dev, u32 size,
 // 					   struct ib_udata *udata, void *obj);
 
-// int dtld_mmap(struct ib_ucontext *context, struct vm_area_struct *vma);
 
 // /* dtld_mr.c */
 // u8 dtld_get_next_key(u32 last_key);

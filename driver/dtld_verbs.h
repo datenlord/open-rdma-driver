@@ -4,6 +4,7 @@
 #include "dtld_pool.h"
 #include "dtld_task.h"
 #include "dtld_queue.h"
+#include "rdma/ib_verbs.h"
 
 struct dtld_port {
 	struct ib_port_attr	attr;
@@ -137,6 +138,11 @@ enum wqe_state {
 	wqe_state_error,
 };
 
+struct dtld_rdma_user_mmap_entry {
+	struct rdma_user_mmap_entry rdma_entry;
+	u64 address;
+};
+
 struct dtld_cqe {
 	union {
 		struct ib_wc		ibwc;
@@ -147,6 +153,9 @@ struct dtld_cqe {
 struct dtld_cq {
 	struct ib_cq		ibcq;
 	struct dtld_pool_elem	elem;
+	struct dtld_rdma_user_mmap_entry *ummap_ent;
+
+	// TODO try if we can remove the following field
 	struct dtld_queue	*queue;
 	spinlock_t		cq_lock;
 	u8			notify;
@@ -348,6 +357,11 @@ static inline struct dtld_pd *to_dtld_pd(struct ib_pd *pd)
 	return pd ? container_of(pd, struct dtld_pd, ibpd) : NULL;
 }
 
+static inline struct dtld_rdma_user_mmap_entry *to_dtld_mmap_entry(struct rdma_user_mmap_entry *ent)
+{
+	return ent ? container_of(ent, struct dtld_rdma_user_mmap_entry, rdma_entry) : NULL;
+}
+
 static inline struct dtld_dev *dtld_from_ibdev(struct ib_device *dev)
 {
 	return dev ? container_of(dev, struct dtld_dev, ib_dev) : NULL;
@@ -362,6 +376,8 @@ static inline struct dtld_pd *dtld_ah_pd(struct dtld_ah *ah)
 {
 	return to_dtld_pd(ah->ibah.pd);
 }
+
+
 
 
 int dtld_register_device(struct dtld_dev *dtld, const char *ibdev_name);
