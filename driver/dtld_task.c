@@ -13,14 +13,16 @@
 int __dtld_do_task(struct dtld_task *task)
 
 {
-	int ret;
+	// int ret;
 
-	while ((ret = task->func(task->arg)) == 0)
-		;
+	// while ((ret = task->func(task->arg)) == 0)
+	// 	;
 
-	task->ret = ret;
+	// task->ret = ret;
 
-	return ret;
+	// return ret;
+
+	return 0;
 }
 
 /*
@@ -32,6 +34,7 @@ void dtld_do_task(struct tasklet_struct *t)
 {
 	int cont;
 	int ret;
+	return;
 	struct dtld_task *task = from_tasklet(task, t, tasklet);
 
 	spin_lock_bh(&task->state_lock);

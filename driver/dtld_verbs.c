@@ -105,11 +105,11 @@ static int dtld_query_port(struct ib_device *dev,
 // 	return 0;
 // }
 
-// static enum rdma_link_layer dtld_get_link_layer(struct ib_device *dev,
-// 					       u32 port_num)
-// {
-// 	return IB_LINK_LAYER_ETHERNET;
-// }
+static enum rdma_link_layer dtld_get_link_layer(struct ib_device *dev,
+					       u32 port_num)
+{
+	return IB_LINK_LAYER_ETHERNET;
+}
 
 static int dtld_alloc_ucontext(struct ib_ucontext *ibuc, struct ib_udata *udata)
 {
@@ -1106,7 +1106,7 @@ static const struct ib_device_ops dtld_dev_ops = {
 	// .enable_driver = dtld_enable_driver,
 	// .get_dma_mr = dtld_get_dma_mr,
 	// .get_hw_stats = dtld_ib_get_hw_stats,
-	// .get_link_layer = dtld_get_link_layer,
+	.get_link_layer = dtld_get_link_layer,
 	.get_port_immutable = dtld_port_immutable,
 	// .map_mr_sg = dtld_map_mr_sg,
 	.mmap = dtld_mmap,
