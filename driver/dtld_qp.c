@@ -178,13 +178,37 @@ static void dtld_qp_init_misc(struct dtld_dev *dtld, struct dtld_qp *qp,
 	atomic_set(&qp->skb_out, 0);
 }
 
-static int dtld_qp_init_req(struct dtld_dev *dtld, struct dtld_qp *qp,
+static int dtld_qp_init_send(struct dtld_dev *dtld, struct dtld_qp *qp,
 			   struct ib_qp_init_attr *init, struct ib_udata *udata,
-			   struct dtld_uresp_create_qp __user *uresp)
+			   struct dtld_uresp_create_qp *uresp)
 {
 	int err;
+
+	struct dtld_ucontext *ctx = rdma_udata_to_drv_context(udata, struct dtld_ucontext, ibuc);
+	struct dtld_rdma_user_mmap_entry *ummap_ent;
+	void *fake_dev_mem;
+	u64 mmap_offset;
+
+	fake_dev_mem = kmalloc(PAGE_SIZE, GFP_KERNEL);
+	if (!fake_dev_mem) 
+		return -ENOMEM;
+
+	ummap_ent = kzalloc(sizeof(*ummap_ent), GFP_KERNEL);
+	if (!ummap_ent) 
+		return -ENOMEM;
+	qp->sq.ummap_ent = ummap_ent;
+
+	ummap_ent->address = (u64)virt_to_phys(fake_dev_mem);
+
+	err = rdma_user_mmap_entry_insert(&ctx->ibuc, &ummap_ent->rdma_entry, PAGE_SIZE);
+	if (err) {
+		kfree(ummap_ent);
+		return err;
+	}
+
+	mmap_offset = rdma_user_mmap_get_offset(&ummap_ent->rdma_entry);
+
 	int wqe_size;
-	enum queue_type type;
 
 	/* pick a source UDP port number for this QP based on
 	 * the source QPN. this spreads traffic for different QPs
@@ -204,34 +228,62 @@ static int dtld_qp_init_req(struct dtld_dev *dtld, struct dtld_qp *qp,
 	qp->sq.max_inline = init->cap.max_inline_data = wqe_size;
 	wqe_size += sizeof(struct dtld_send_wqe);
 
-	type = QUEUE_TYPE_FROM_CLIENT;
-	qp->sq.queue = dtld_queue_init(dtld, &qp->sq.max_wr,
-				wqe_size, type);
-	if (!qp->sq.queue)
-		return -ENOMEM;
+	// type = QUEUE_TYPE_FROM_CLIENT;
+	// qp->sq.queue = dtld_queue_init(dtld, &qp->sq.max_wr,
+	// 			wqe_size, type);
+	// if (!qp->sq.queue)
+	// 	return -ENOMEM;
 
-	qp->req.wqe_index = queue_get_producer(qp->sq.queue,
-					       QUEUE_TYPE_FROM_CLIENT);
+	// TODO: fill up `qp->req.wqe_index`?
+	// qp->req.wqe_index = queue_get_producer(qp->sq.queue,
+	// 				       QUEUE_TYPE_FROM_CLIENT);
 
 	qp->req.state		= QP_STATE_RESET;
 	qp->req.opcode		= -1;
 	qp->comp.opcode		= -1;
+
+	uresp->sq_offset = mmap_offset;
+	uresp->sq_len = PAGE_SIZE;
 
 	spin_lock_init(&qp->sq.sq_lock);
 
 	return 0;
 }
 
-static int dtld_qp_init_resp(struct dtld_dev *dtld, struct dtld_qp *qp,
+static int dtld_qp_init_recv(struct dtld_dev *dtld, struct dtld_qp *qp,
 			    struct ib_qp_init_attr *init,
 			    struct ib_udata *udata,
-			    struct dtld_uresp_create_qp __user *uresp)
+			    struct dtld_uresp_create_qp *uresp)
 {
 	int err;
-	int wqe_size;
-	enum queue_type type;
 
 	if (!qp->srq) {
+		struct dtld_ucontext *ctx = rdma_udata_to_drv_context(udata, struct dtld_ucontext, ibuc);
+		struct dtld_rdma_user_mmap_entry *ummap_ent;
+		void *fake_dev_mem;
+		u64 mmap_offset;
+
+		fake_dev_mem = kmalloc(PAGE_SIZE, GFP_KERNEL);
+		if (!fake_dev_mem) 
+			return -ENOMEM;
+
+		ummap_ent = kzalloc(sizeof(*ummap_ent), GFP_KERNEL);
+		if (!ummap_ent) 
+			return -ENOMEM;
+		qp->rq.ummap_ent = ummap_ent;
+
+		ummap_ent->address = (u64)virt_to_phys(fake_dev_mem);
+
+		err = rdma_user_mmap_entry_insert(&ctx->ibuc, &ummap_ent->rdma_entry, PAGE_SIZE);
+		if (err) {
+			kfree(ummap_ent);
+			return err;
+		}
+
+		mmap_offset = rdma_user_mmap_get_offset(&ummap_ent->rdma_entry);
+
+		int wqe_size;
+
 		qp->rq.max_wr		= init->cap.max_recv_wr;
 		qp->rq.max_sge		= init->cap.max_recv_sge;
 
@@ -240,17 +292,18 @@ static int dtld_qp_init_resp(struct dtld_dev *dtld, struct dtld_qp *qp,
 		pr_debug("qp#%d max_wr = %d, max_sge = %d, wqe_size = %d\n",
 			 qp_num(qp), qp->rq.max_wr, qp->rq.max_sge, wqe_size);
 
-		type = QUEUE_TYPE_FROM_CLIENT;
-		qp->rq.queue = dtld_queue_init(dtld, &qp->rq.max_wr,
-					wqe_size, type);
-		if (!qp->rq.queue)
-			return -ENOMEM;
+		// type = QUEUE_TYPE_FROM_CLIENT;
+		// qp->rq.queue = dtld_queue_init(dtld, &qp->rq.max_wr,
+		// 			wqe_size, type);
+		// if (!qp->rq.queue)
+		// 	return -ENOMEM;
 
+		uresp->rq_offset = mmap_offset;
+		uresp->rq_len = PAGE_SIZE;
 	}
 
 	spin_lock_init(&qp->rq.producer_lock);
 	spin_lock_init(&qp->rq.consumer_lock);
-
 
 	qp->resp.msn		= 0;
 	qp->resp.state		= QP_STATE_RESET;
@@ -259,11 +312,10 @@ static int dtld_qp_init_resp(struct dtld_dev *dtld, struct dtld_qp *qp,
 }
 
 /* called by the create qp verb */
-int dtld_qp_from_init(struct dtld_dev *dtld, struct dtld_qp *qp, struct dtld_pd *pd,
-		     struct ib_qp_init_attr *init,
-		     struct dtld_uresp_create_qp __user *uresp,
-		     struct ib_pd *ibpd,
-		     struct ib_udata *udata)
+int dtld_qp_from_init(struct dtld_dev *dtld, struct dtld_qp *qp,
+			 struct dtld_pd *pd, struct ib_pd *ibpd,
+			 struct ib_qp_init_attr *init, struct ib_udata *udata,
+			 struct dtld_uresp_create_qp *uresp)
 {
 	int err;
 	struct dtld_cq *rcq = to_dtld_cq(init->recv_cq);
@@ -276,35 +328,35 @@ int dtld_qp_from_init(struct dtld_dev *dtld, struct dtld_qp *qp, struct dtld_pd 
 	if (srq)
 		dtld_get(srq);
 
-	qp->pd			= pd;
-	qp->rcq			= rcq;
-	qp->scq			= scq;
-	qp->srq			= srq;
+	qp->pd = pd;
+	qp->rcq = rcq;
+	qp->scq = scq;
+	qp->srq = srq;
 
 	atomic_inc(&rcq->num_wq);
 	atomic_inc(&scq->num_wq);
 
 	dtld_qp_init_misc(dtld, qp, init);
 
-	err = dtld_qp_init_req(dtld, qp, init, udata, uresp);
+	err = dtld_qp_init_send(dtld, qp, init, udata, uresp);
 	if (err)
-		goto err1;
+		goto err;
 
-	err = dtld_qp_init_resp(dtld, qp, init, udata, uresp);
+	err = dtld_qp_init_recv(dtld, qp, init, udata, uresp);
 	if (err)
-		goto err2;
+		goto err;
 
 	qp->attr.qp_state = IB_QPS_RESET;
 	qp->valid = 1;
 
 	return 0;
 
-err2:
-	dtld_queue_cleanup(qp->sq.queue);
-	qp->sq.queue = NULL;
-err1:
+err:
 	atomic_dec(&rcq->num_wq);
 	atomic_dec(&scq->num_wq);
+
+	qp->sq.ummap_ent = NULL;
+	qp->rq.ummap_ent = NULL;
 
 	qp->pd = NULL;
 	qp->rcq = NULL;

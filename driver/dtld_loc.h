@@ -101,10 +101,10 @@ void dtld_mr_cleanup(struct dtld_pool_elem *elem);
 
 /* dtld_qp.c */
 int dtld_qp_chk_init(struct dtld_dev *dtld, struct ib_qp_init_attr *init);
-int dtld_qp_from_init(struct dtld_dev *dtld, struct dtld_qp *qp, struct dtld_pd *pd,
-		     struct ib_qp_init_attr *init,
-		     struct dtld_uresp_create_qp __user *uresp,
-		     struct ib_pd *ibpd, struct ib_udata *udata);
+int dtld_qp_from_init(struct dtld_dev *dtld, struct dtld_qp *qp,
+			 struct dtld_pd *pd, struct ib_pd *ibpd,
+			 struct ib_qp_init_attr *init, struct ib_udata *udata,
+			 struct dtld_uresp_create_qp *uresp);
 int dtld_qp_to_init(struct dtld_qp *qp, struct ib_qp_init_attr *init);
 int dtld_qp_chk_attr(struct dtld_dev *dtld, struct dtld_qp *qp,
 		    struct ib_qp_attr *attr, int mask);

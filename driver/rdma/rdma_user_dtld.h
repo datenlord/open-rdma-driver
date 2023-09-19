@@ -187,27 +187,13 @@ struct dtld_uresp_create_cq {
 };
 
 struct dtld_ureq_create_qp {
-	__aligned_u64 db_record_va;
-	__aligned_u64 qbuf_va;
-	__u32 qbuf_len;
-	__u32 rsvd0;
 };
 
 struct dtld_uresp_create_qp {
-	__u32 qp_id;
-	__u32 num_sqe;
-	__u32 num_rqe;
-	__u32 rq_offset;
-};
-
-struct dtld_uresp_alloc_ctx {
-	__u32 dev_id;
-	__u32 pad;
-	__u32 sdb_type;
-	__u32 sdb_offset;
-	__aligned_u64 sdb;
-	__aligned_u64 rdb;
-	__aligned_u64 cdb;
+	__aligned_u64 rq_offset;
+	__aligned_u64 sq_offset;
+	__aligned_u64 rq_len;
+	__aligned_u64 sq_len;
 };
 
 struct dtld_create_srq_resp {

@@ -243,51 +243,6 @@ static int dtld_dealloc_pd(struct ib_pd *ibpd, struct ib_udata *udata)
 // 	return 0;
 // }
 
-static int post_one_recv(struct dtld_rq *rq, const struct ib_recv_wr *ibwr)
-{
-	int err;
-	int i;
-	u32 length;
-	struct dtld_recv_wqe *recv_wqe;
-	int num_sge = ibwr->num_sge;
-	int full;
-
-	full = queue_full(rq->queue, QUEUE_TYPE_TO_DRIVER);
-	if (unlikely(full)) {
-		err = -ENOMEM;
-		goto err1;
-	}
-
-	if (unlikely(num_sge > rq->max_sge)) {
-		err = -EINVAL;
-		goto err1;
-	}
-
-	length = 0;
-	for (i = 0; i < num_sge; i++)
-		length += ibwr->sg_list[i].length;
-
-	recv_wqe = queue_producer_addr(rq->queue, QUEUE_TYPE_TO_DRIVER);
-	recv_wqe->wr_id = ibwr->wr_id;
-	recv_wqe->num_sge = num_sge;
-
-	memcpy(recv_wqe->dma.sge, ibwr->sg_list,
-	       num_sge * sizeof(struct ib_sge));
-
-	recv_wqe->dma.length		= length;
-	recv_wqe->dma.resid		= length;
-	recv_wqe->dma.num_sge		= num_sge;
-	recv_wqe->dma.cur_sge		= 0;
-	recv_wqe->dma.sge_offset	= 0;
-
-	queue_advance_producer(rq->queue, QUEUE_TYPE_TO_DRIVER);
-
-	return 0;
-
-err1:
-	return err;
-}
-
 // static int dtld_create_srq(struct ib_srq *ibsrq, struct ib_srq_init_attr *init,
 // 			  struct ib_udata *udata)
 // {
@@ -401,6 +356,21 @@ err1:
 // 	return err;
 // }
 
+static int get_qp_ucmd(struct dtld_dev *dtld, struct ib_udata *udata,
+		       struct dtld_ureq_create_qp *ucmd)
+{
+	struct ib_device *ib_dev = &dtld->ib_dev;
+	int ret;
+
+	ret = ib_copy_from_udata(ucmd, udata, min(udata->inlen, sizeof(*ucmd)));
+	if (ret) {
+		ibdev_err(ib_dev, "failed to copy QP udata, ret = %d.\n", ret);
+		return ret;
+	}
+
+	return 0;
+}
+
 static int dtld_create_qp(struct ib_qp *ibqp, struct ib_qp_init_attr *init,
 			 struct ib_udata *udata)
 {
@@ -408,12 +378,15 @@ static int dtld_create_qp(struct ib_qp *ibqp, struct ib_qp_init_attr *init,
 	struct dtld_dev *dtld = dtld_from_ibdev(ibqp->device);
 	struct dtld_pd *pd = to_dtld_pd(ibqp->pd);
 	struct dtld_qp *qp = to_dtld_qp(ibqp);
-	struct dtld_uresp_create_qp __user *uresp = NULL;
+	struct dtld_ureq_create_qp ucmd = {};
+	struct dtld_uresp_create_qp uresp = {};
 
 	if (udata) {
-		if (udata->outlen < sizeof(*uresp))
+		err = get_qp_ucmd(dtld, udata, &ucmd);
+		if (err)
+			return err;
+		if (udata->outlen < sizeof(uresp))
 			return -EINVAL;
-		uresp = udata->outbuf;
 	}
 
 	if (init->create_flags)
@@ -432,7 +405,7 @@ static int dtld_create_qp(struct ib_qp *ibqp, struct ib_qp_init_attr *init,
 	if (err)
 		return err;
 
-	err = dtld_qp_from_init(dtld, qp, pd, init, uresp, ibqp->pd, udata);
+	err = dtld_qp_from_init(dtld, qp, pd, ibqp->pd, init, udata, &uresp);
 	if (err)
 		goto qp_init;
 
@@ -721,6 +694,51 @@ static int dtld_post_send(struct ib_qp *ibqp, const struct ib_send_wr *wr,
 	}
 
 	return 0;
+}
+
+static int post_one_recv(struct dtld_rq *rq, const struct ib_recv_wr *ibwr)
+{
+	int err;
+	int i;
+	u32 length;
+	struct dtld_recv_wqe *recv_wqe;
+	int num_sge = ibwr->num_sge;
+	int full;
+
+	full = queue_full(rq->queue, QUEUE_TYPE_TO_DRIVER);
+	if (unlikely(full)) {
+		err = -ENOMEM;
+		goto err1;
+	}
+
+	if (unlikely(num_sge > rq->max_sge)) {
+		err = -EINVAL;
+		goto err1;
+	}
+
+	length = 0;
+	for (i = 0; i < num_sge; i++)
+		length += ibwr->sg_list[i].length;
+
+	recv_wqe = queue_producer_addr(rq->queue, QUEUE_TYPE_TO_DRIVER);
+	recv_wqe->wr_id = ibwr->wr_id;
+	recv_wqe->num_sge = num_sge;
+
+	memcpy(recv_wqe->dma.sge, ibwr->sg_list,
+	       num_sge * sizeof(struct ib_sge));
+
+	recv_wqe->dma.length		= length;
+	recv_wqe->dma.resid		= length;
+	recv_wqe->dma.num_sge		= num_sge;
+	recv_wqe->dma.cur_sge		= 0;
+	recv_wqe->dma.sge_offset	= 0;
+
+	queue_advance_producer(rq->queue, QUEUE_TYPE_TO_DRIVER);
+
+	return 0;
+
+err1:
+	return err;
 }
 
 static int dtld_post_recv(struct ib_qp *ibqp, const struct ib_recv_wr *wr,

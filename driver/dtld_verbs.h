@@ -169,6 +169,10 @@ struct dtld_sq {
 	int			max_wr;
 	int			max_sge;
 	int			max_inline;
+
+	struct dtld_pool_elem	elem;
+	struct dtld_rdma_user_mmap_entry *ummap_ent;
+
 	spinlock_t		sq_lock; /* guard queue */
 	struct dtld_queue	*queue;
 };
@@ -176,6 +180,10 @@ struct dtld_sq {
 struct dtld_rq {
 	int			max_wr;
 	int			max_sge;
+
+	struct dtld_pool_elem	elem;
+	struct dtld_rdma_user_mmap_entry *ummap_ent;
+
 	spinlock_t		producer_lock; /* guard queue producer */
 	spinlock_t		consumer_lock; /* guard queue consumer */
 	struct dtld_queue	*queue;
@@ -231,6 +239,8 @@ struct dtld_qp {
 
 	struct dtld_sq		sq;
 	struct dtld_rq		rq;
+
+	// TODO: cleanup below
 
 	// struct socket		*sk;  // seems related to simulated nic
 	u32			dst_cookie;
