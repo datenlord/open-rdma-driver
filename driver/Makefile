@@ -12,4 +12,6 @@ dtld_ib-y := \
 	dtld_task.o \
 	dtld_av.o \
 	dtld_opcode.o \
-
+	xdma.o \
+	libxdma.o \
+	xdma_thread.o

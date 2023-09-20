@@ -2,6 +2,8 @@
 
 #include <rdma/rdma_netlink.h>
 #include <net/addrconf.h>
+#include <linux/pci.h>
+#include "xdma.h"
 #include "dtld.h"
 
 
@@ -10,6 +12,12 @@ MODULE_DESCRIPTION("Mellanox 5th generation network adapters (ConnectX series) I
 MODULE_LICENSE("Dual BSD/GPL");
 
 
+static const struct pci_device_id pci_ids[] = {
+	{ PCI_DEVICE(0x10ee, 0x9038), }, // XDMA
+	{0,}
+};
+
+MODULE_DEVICE_TABLE(pci, pci_ids);
 
 
 /* initialize dtld device parameters */
@@ -90,6 +98,7 @@ static void dtld_init_port_param(struct dtld_port *port)
 	port->subnet_prefix		= cpu_to_be64(DTLD_PORT_SUBNET_PREFIX);
 }
 
+static void dtld_init_ports(struct dtld_dev *dtld) __attribute__((used));
 static void dtld_init_ports(struct dtld_dev *dtld)
 {
 	struct dtld_port *port = &dtld->port;
@@ -114,6 +123,92 @@ void dtld_set_mtu(struct dtld_dev *dtld, unsigned int ndev_mtu)
 	port->mtu_cap = ib_mtu_enum_to_int(mtu);
 }
 
+static int probe_one(struct pci_dev *pdev, const struct pci_device_id *id)
+{
+	int rv = 0;
+	struct xdma_pci_dev *xpdev = NULL;
+	struct xdma_dev *xdev;
+	void *hndl;
+	pr_info("dtld probe one");
+	xpdev = xpdev_alloc(pdev);
+	if (!xpdev)
+		return -ENOMEM;
+
+	hndl = xdma_device_open("xdma", pdev, &xpdev->user_max,
+			&xpdev->h2c_channel_max, &xpdev->c2h_channel_max);
+	if (!hndl) {
+		rv = -EINVAL;
+		goto err_out;
+	}
+
+	if (xpdev->user_max > MAX_USER_IRQ) {
+		pr_err("Maximum users limit reached\n");
+		rv = -EINVAL;
+		goto err_out;
+	}
+
+	if (xpdev->h2c_channel_max > XDMA_CHANNEL_NUM_MAX) {
+		pr_err("Maximun H2C channel limit reached\n");
+		rv = -EINVAL;
+		goto err_out;
+	}
+
+	if (xpdev->c2h_channel_max > XDMA_CHANNEL_NUM_MAX) {
+		pr_err("Maximun C2H channel limit reached\n");
+		rv = -EINVAL;
+		goto err_out;
+	}
+
+	if (!xpdev->h2c_channel_max && !xpdev->c2h_channel_max)
+		pr_warn("NO engine found!\n");
+
+	if (xpdev->user_max) {
+		u32 mask = (1 << (xpdev->user_max + 1)) - 1;
+
+		rv = xdma_user_isr_enable(hndl, mask);
+		if (rv)
+			goto err_out;
+	}
+
+	/* make sure no duplicate */
+	// xdev = xdev_find_by_pdev(pdev);
+	// if (!xdev) {
+	// 	pr_warn("NO xdev found!\n");
+	// 	rv =  -EINVAL;
+	// 	goto err_out;
+	// }
+
+	// if (hndl != xdev) {
+	// 	pr_err("xdev handle mismatch\n");
+	// 	rv =  -EINVAL;
+	// 	goto err_out;
+	// }
+
+	// pr_info("%s xdma%d, pdev 0x%p, xdev 0x%p, 0x%p, usr %d, ch %d,%d.\n",
+	// 	dev_name(&pdev->dev), xdev->idx, pdev, xpdev, xdev,
+	// 	xpdev->user_max, xpdev->h2c_channel_max,
+	// 	xpdev->c2h_channel_max);
+
+	// xpdev->xdev = hndl;
+
+	// TODO: create interface
+	// rv = xpdev_create_interfaces(xpdev);
+	// if (rv)
+	// 	goto err_out;
+
+	dev_set_drvdata(&pdev->dev, xpdev);
+	return 0;
+	err_out:
+		// TODO: release
+		return rv;
+}
+
+static struct pci_driver pci_driver = {
+	.name = "dtld",
+	.id_table = pci_ids,
+	.probe = probe_one,
+};
+
 
 static int __init dtld_ib_init(void)
 {
@@ -134,7 +229,7 @@ static int __init dtld_ib_init(void)
 		ib_dealloc_device(&dtld->ib_dev);
 	}
 		
-	return 0;
+	return pci_register_driver(&pci_driver);
 }
 
 static void __exit dtld_ib_cleanup(void)
