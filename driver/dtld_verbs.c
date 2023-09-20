@@ -409,6 +409,10 @@ static int dtld_create_qp(struct ib_qp *ibqp, struct ib_qp_init_attr *init,
 	if (err)
 		goto qp_init;
 
+	err = ib_copy_to_udata(udata, &uresp, sizeof(uresp));
+	if (err)
+		goto qp_init;
+
 	return 0;
 
 qp_init:
