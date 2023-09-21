@@ -198,7 +198,7 @@ static int dtld_qp_init_send(struct dtld_dev *dtld, struct dtld_qp *qp,
 		return -ENOMEM;
 	qp->sq.ummap_ent = ummap_ent;
 
-	ummap_ent->address = (u64)virt_to_phys(fake_dev_mem);
+	ummap_ent->address = (u64)virt_to_phys(dtld->xdev->bar[dtld->xdev->bypass_bar_idx]);
 
 	err = rdma_user_mmap_entry_insert(&ctx->ibuc, &ummap_ent->rdma_entry, PAGE_SIZE);
 	if (err) {

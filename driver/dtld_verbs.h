@@ -6,6 +6,8 @@
 #include "dtld_queue.h"
 #include "rdma/ib_verbs.h"
 
+#include "libxdma.h"
+
 struct dtld_port {
 	struct ib_port_attr	attr;
 	__be64			port_guid;
@@ -29,6 +31,8 @@ struct dtld_dev {
 	struct dtld_pool		cq_pool;
 	struct dtld_pool		pd_pool;
 	struct dtld_pool		mr_pool;
+
+	struct xdma_dev		*xdev;
 };
 
 enum dtld_qp_state {

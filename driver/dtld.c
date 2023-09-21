@@ -1,16 +1,12 @@
-
-
 #include <rdma/rdma_netlink.h>
 #include <net/addrconf.h>
 #include <linux/pci.h>
 #include "xdma.h"
 #include "dtld.h"
 
-
 MODULE_AUTHOR("Eli Cohen <eli@mellanox.com>");
 MODULE_DESCRIPTION("Mellanox 5th generation network adapters (ConnectX series) IB driver");
 MODULE_LICENSE("Dual BSD/GPL");
-
 
 static const struct pci_device_id pci_ids[] = {
 	{ PCI_DEVICE(0x10ee, 0x9038), }, // XDMA
@@ -19,11 +15,9 @@ static const struct pci_device_id pci_ids[] = {
 
 MODULE_DEVICE_TABLE(pci, pci_ids);
 
-
 /* initialize dtld device parameters */
 static void dtld_init_device_param(struct dtld_dev *dtld)
 {
-
 	dtld->attr.vendor_id			= DTLD_VENDOR_ID;
 	dtld->attr.max_mr_size			= DTLD_MAX_MR_SIZE;
 	dtld->attr.page_size_cap			= DTLD_PAGE_SIZE_CAP;
@@ -123,11 +117,10 @@ void dtld_set_mtu(struct dtld_dev *dtld, unsigned int ndev_mtu)
 	port->mtu_cap = ib_mtu_enum_to_int(mtu);
 }
 
-static int probe_one(struct pci_dev *pdev, const struct pci_device_id *id)
+static int dtld_dev_init_xdma(struct pci_dev *pdev, const struct pci_device_id *id, struct xdma_dev *xdev)
 {
 	int rv = 0;
 	struct xdma_pci_dev *xpdev = NULL;
-	struct xdma_dev *xdev;
 	void *hndl;
 	pr_info("dtld probe one");
 	xpdev = xpdev_alloc(pdev);
@@ -198,25 +191,21 @@ static int probe_one(struct pci_dev *pdev, const struct pci_device_id *id)
 
 	dev_set_drvdata(&pdev->dev, xpdev);
 	return 0;
-	err_out:
-		// TODO: release
-		return rv;
+
+err_out:
+	// TODO: release
+	return rv;
 }
 
-static struct pci_driver pci_driver = {
-	.name = "dtld",
-	.id_table = pci_ids,
-	.probe = probe_one,
-};
-
-
-static int __init dtld_ib_init(void)
+static int dtld_dev_init_rdma(struct xdma_dev *xdev)
 {
 	int err;
 
 	struct dtld_dev *dtld = NULL;
 
 	dtld = ib_alloc_device(dtld_dev, ib_dev);
+
+	dtld->xdev = xdev;
 
 	dtld_init_pools(dtld);
 
@@ -228,7 +217,34 @@ static int __init dtld_ib_init(void)
 		pr_warn("%s failed with error %d\n", __func__, err);
 		ib_dealloc_device(&dtld->ib_dev);
 	}
-		
+
+	return 0;
+}
+
+static int probe_one(struct pci_dev *pdev, const struct pci_device_id *id)
+{
+	int err;
+	struct xdma_dev *xdev;
+
+	err = dtld_dev_init_xdma(pdev, id, xdev);
+	if (err)
+		return err;
+
+	err = dtld_dev_init_rdma(xdev);
+	if (err)
+		return err;
+
+	return 0;
+}
+
+static struct pci_driver pci_driver = {
+	.name = "dtld",
+	.id_table = pci_ids,
+	.probe = probe_one,
+};
+
+static int __init dtld_ib_init(void)
+{
 	return pci_register_driver(&pci_driver);
 }
 
