@@ -186,19 +186,16 @@ static int dtld_qp_init_send(struct dtld_dev *dtld, struct dtld_qp *qp,
 
 	struct dtld_ucontext *ctx = rdma_udata_to_drv_context(udata, struct dtld_ucontext, ibuc);
 	struct dtld_rdma_user_mmap_entry *ummap_ent;
-	void *fake_dev_mem;
 	u64 mmap_offset;
 
-	fake_dev_mem = kmalloc(PAGE_SIZE, GFP_KERNEL);
-	if (!fake_dev_mem) 
-		return -ENOMEM;
+	
 
 	ummap_ent = kzalloc(sizeof(*ummap_ent), GFP_KERNEL);
 	if (!ummap_ent) 
 		return -ENOMEM;
 	qp->sq.ummap_ent = ummap_ent;
 
-	ummap_ent->address = (u64)virt_to_phys(fake_dev_mem);
+	ummap_ent->address = (u64)dtld->xdev->bar[dtld->xdev->bypass_bar_idx];
 
 	err = rdma_user_mmap_entry_insert(&ctx->ibuc, &ummap_ent->rdma_entry, PAGE_SIZE);
 	if (err) {
@@ -260,19 +257,14 @@ static int dtld_qp_init_recv(struct dtld_dev *dtld, struct dtld_qp *qp,
 	if (!qp->srq) {
 		struct dtld_ucontext *ctx = rdma_udata_to_drv_context(udata, struct dtld_ucontext, ibuc);
 		struct dtld_rdma_user_mmap_entry *ummap_ent;
-		void *fake_dev_mem;
 		u64 mmap_offset;
-
-		fake_dev_mem = kmalloc(PAGE_SIZE, GFP_KERNEL);
-		if (!fake_dev_mem) 
-			return -ENOMEM;
 
 		ummap_ent = kzalloc(sizeof(*ummap_ent), GFP_KERNEL);
 		if (!ummap_ent) 
 			return -ENOMEM;
 		qp->rq.ummap_ent = ummap_ent;
 
-		ummap_ent->address = (u64)virt_to_phys(fake_dev_mem);
+		ummap_ent->address = (u64)dtld->xdev->bar[dtld->xdev->bypass_bar_idx];
 
 		err = rdma_user_mmap_entry_insert(&ctx->ibuc, &ummap_ent->rdma_entry, PAGE_SIZE);
 		if (err) {

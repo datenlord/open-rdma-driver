@@ -5,8 +5,7 @@ set -x
 :"${BDF:=02:00.0}"
 :"${KERNEL_IMG:=/linux-src/arch/x86_64/boot/bzImage}"
 
-CUR_USER=$USER
-
+CUR_USER=${USER:-root}
 
 sh -c 'echo "10ee 903f" > /sys/bus/pci/drivers/vfio-pci/new_id'
 

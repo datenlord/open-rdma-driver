@@ -63,21 +63,14 @@ int dtld_cq_from_init(struct dtld_dev *dtld, struct dtld_cq *cq, int cqe,
 	int err;
 	struct dtld_ucontext *ctx = rdma_udata_to_drv_context(udata, struct dtld_ucontext, ibuc);
 	struct dtld_rdma_user_mmap_entry *ummap_ent;
-	void *fake_dev_mem;
 	u64 mmap_offset;
-
-
-	// TODO, only for debug usage now, will be replace to mmio bar address in the future. there is memory leak now, i didn't free it.
-	fake_dev_mem = kmalloc(PAGE_SIZE, GFP_KERNEL);
-	if (!fake_dev_mem) 
-		return -ENOMEM;
 
 	ummap_ent = kzalloc(sizeof(*ummap_ent), GFP_KERNEL);
 	if (!ummap_ent) 
 		return -ENOMEM;
 	cq->ummap_ent = ummap_ent;
 
-	ummap_ent->address = (u64)virt_to_phys(fake_dev_mem);
+	ummap_ent->address = (u64)dtld->xdev->bar[dtld->xdev->bypass_bar_idx];
 
 	err = rdma_user_mmap_entry_insert(&ctx->ibuc, &ummap_ent->rdma_entry, PAGE_SIZE);
 	if (err) {

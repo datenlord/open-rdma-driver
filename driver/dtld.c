@@ -9,7 +9,7 @@ MODULE_DESCRIPTION("Mellanox 5th generation network adapters (ConnectX series) I
 MODULE_LICENSE("Dual BSD/GPL");
 
 static const struct pci_device_id pci_ids[] = {
-	{ PCI_DEVICE(0x10ee, 0x9038), }, // XDMA
+	{ PCI_DEVICE(0x10ee, 0x903f), }, // XDMA
 	{0,}
 };
 
@@ -117,7 +117,7 @@ void dtld_set_mtu(struct dtld_dev *dtld, unsigned int ndev_mtu)
 	port->mtu_cap = ib_mtu_enum_to_int(mtu);
 }
 
-static int dtld_dev_init_xdma(struct pci_dev *pdev, const struct pci_device_id *id, struct xdma_dev *xdev)
+static int dtld_dev_init_xdma(struct pci_dev *pdev, const struct pci_device_id *id, struct xdma_dev **xdev)
 {
 	int rv = 0;
 	struct xdma_pci_dev *xpdev = NULL;
@@ -164,30 +164,25 @@ static int dtld_dev_init_xdma(struct pci_dev *pdev, const struct pci_device_id *
 	}
 
 	/* make sure no duplicate */
-	// xdev = xdev_find_by_pdev(pdev);
-	// if (!xdev) {
-	// 	pr_warn("NO xdev found!\n");
-	// 	rv =  -EINVAL;
-	// 	goto err_out;
-	// }
+	*xdev = xdev_find_by_pdev(pdev);
+	if (!*xdev) {
+		pr_warn("NO xdev found!\n");
+		rv =  -EINVAL;
+		goto err_out;
+	}
 
-	// if (hndl != xdev) {
-	// 	pr_err("xdev handle mismatch\n");
-	// 	rv =  -EINVAL;
-	// 	goto err_out;
-	// }
+	if (hndl != *xdev) {
+		pr_err("xdev handle mismatch\n");
+		rv =  -EINVAL;
+		goto err_out;
+	}
 
 	// pr_info("%s xdma%d, pdev 0x%p, xdev 0x%p, 0x%p, usr %d, ch %d,%d.\n",
 	// 	dev_name(&pdev->dev), xdev->idx, pdev, xpdev, xdev,
 	// 	xpdev->user_max, xpdev->h2c_channel_max,
 	// 	xpdev->c2h_channel_max);
 
-	// xpdev->xdev = hndl;
-
-	// TODO: create interface
-	// rv = xpdev_create_interfaces(xpdev);
-	// if (rv)
-	// 	goto err_out;
+	xpdev->xdev = hndl;
 
 	dev_set_drvdata(&pdev->dev, xpdev);
 	return 0;
@@ -224,9 +219,9 @@ static int dtld_dev_init_rdma(struct xdma_dev *xdev)
 static int probe_one(struct pci_dev *pdev, const struct pci_device_id *id)
 {
 	int err;
-	struct xdma_dev *xdev;
+	struct xdma_dev *xdev = NULL;
 
-	err = dtld_dev_init_xdma(pdev, id, xdev);
+	err = dtld_dev_init_xdma(pdev, id, &xdev);
 	if (err)
 		return err;
 

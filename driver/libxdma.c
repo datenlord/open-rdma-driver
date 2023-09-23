@@ -339,6 +339,21 @@ static inline void xdev_list_remove(struct xdma_dev *xdev)
 	synchronize_rcu();
 }
 
+struct xdma_dev *xdev_find_by_pdev(struct pci_dev *pdev)
+{
+	struct xdma_dev *xdev, *tmp;
+
+	mutex_lock(&xdev_mutex);
+	list_for_each_entry_safe(xdev, tmp, &xdev_list, list_head) {
+		if (xdev->pdev == pdev) {
+			mutex_unlock(&xdev_mutex);
+			return xdev;
+		}
+	}
+	mutex_unlock(&xdev_mutex);
+	return NULL;
+}
+
 static int request_regions(struct xdma_dev *xdev, struct pci_dev *pdev)
 {
 	int rv;
@@ -814,7 +829,7 @@ static int irq_setup(struct xdma_dev *xdev, struct pci_dev *pdev)
 	// 		return rv;
 	// 	prog_irq_msix_channel(xdev, 0);
 	// 	prog_irq_msix_user(xdev, 0);
-		BUG();
+		// BUG();
 		return 0;
 	} else if (xdev->msi_enabled)
         // FIXME: 默认路径

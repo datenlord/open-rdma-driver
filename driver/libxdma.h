@@ -421,6 +421,8 @@ static inline void xdma_device_flag_clear(struct xdma_dev *xdev, unsigned int f)
 	spin_unlock_irqrestore(&xdev->lock, flags);
 }
 
+struct xdma_dev *xdev_find_by_pdev(struct pci_dev *pdev);
+
 void *xdma_device_open(const char *mname, struct pci_dev *pdev, int *user_max,
 		       int *h2c_channel_max, int *c2h_channel_max) __attribute__((used));
 
