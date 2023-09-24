@@ -3,6 +3,7 @@
  * Copyright (c) 2016 Mellanox Technologies Ltd. All rights reserved.
  * Copyright (c) 2015 System Fabric Works, Inc. All rights reserved.
  */
+#include <linux/pci.h>
 #include <linux/vmalloc.h>
 #include <rdma/uverbs_ioctl.h>
 #include "dtld.h"
@@ -70,7 +71,7 @@ int dtld_cq_from_init(struct dtld_dev *dtld, struct dtld_cq *cq, int cqe,
 		return -ENOMEM;
 	cq->ummap_ent = ummap_ent;
 
-	ummap_ent->address = (u64)dtld->xdev->bar[dtld->xdev->bypass_bar_idx];
+	ummap_ent->address = pci_resource_start(dtld->xdev->pdev, dtld->xdev->bypass_bar_idx);
 
 	err = rdma_user_mmap_entry_insert(&ctx->ibuc, &ummap_ent->rdma_entry, PAGE_SIZE);
 	if (err) {

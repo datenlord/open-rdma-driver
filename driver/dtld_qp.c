@@ -3,7 +3,8 @@
  * Copyright (c) 2016 Mellanox Technologies Ltd. All rights reserved.
  * Copyright (c) 2015 System Fabric Works, Inc. All rights reserved.
  */
-
+ 
+#include <linux/pci.h>
 #include <linux/skbuff.h>
 #include <linux/delay.h>
 #include <linux/sched.h>
@@ -195,7 +196,7 @@ static int dtld_qp_init_send(struct dtld_dev *dtld, struct dtld_qp *qp,
 		return -ENOMEM;
 	qp->sq.ummap_ent = ummap_ent;
 
-	ummap_ent->address = (u64)dtld->xdev->bar[dtld->xdev->bypass_bar_idx];
+	ummap_ent->address = pci_resource_start(dtld->xdev->pdev, dtld->xdev->bypass_bar_idx);
 
 	err = rdma_user_mmap_entry_insert(&ctx->ibuc, &ummap_ent->rdma_entry, PAGE_SIZE);
 	if (err) {
@@ -264,7 +265,7 @@ static int dtld_qp_init_recv(struct dtld_dev *dtld, struct dtld_qp *qp,
 			return -ENOMEM;
 		qp->rq.ummap_ent = ummap_ent;
 
-		ummap_ent->address = (u64)dtld->xdev->bar[dtld->xdev->bypass_bar_idx];
+		ummap_ent->address = pci_resource_start(dtld->xdev->pdev, dtld->xdev->bypass_bar_idx);
 
 		err = rdma_user_mmap_entry_insert(&ctx->ibuc, &ummap_ent->rdma_entry, PAGE_SIZE);
 		if (err) {
