@@ -42,20 +42,6 @@ err1:
 	return -EINVAL;
 }
 
-static void dtld_send_complete(struct tasklet_struct *t)
-{
-	struct dtld_cq *cq = from_tasklet(cq, t, comp_task);
-	unsigned long flags;
-
-	spin_lock_irqsave(&cq->cq_lock, flags);
-	if (cq->is_dying) {
-		spin_unlock_irqrestore(&cq->cq_lock, flags);
-		return;
-	}
-	spin_unlock_irqrestore(&cq->cq_lock, flags);
-
-	cq->ibcq.comp_handler(&cq->ibcq, cq->ibcq.cq_context);
-}
 
 int dtld_cq_from_init(struct dtld_dev *dtld, struct dtld_cq *cq, int cqe,
 		     int comp_vector, struct ib_udata *udata,
@@ -111,43 +97,6 @@ int dtld_cq_from_init(struct dtld_dev *dtld, struct dtld_cq *cq, int cqe,
 // 	return err;
 // }
 
-// int dtld_cq_post(struct dtld_cq *cq, struct dtld_cqe *cqe, int solicited)
-// {
-// 	struct ib_event ev;
-// 	int full;
-// 	void *addr;
-// 	unsigned long flags;
-
-// 	spin_lock_irqsave(&cq->cq_lock, flags);
-
-// 	full = queue_full(cq->queue, QUEUE_TYPE_TO_CLIENT);
-// 	if (unlikely(full)) {
-// 		spin_unlock_irqrestore(&cq->cq_lock, flags);
-// 		if (cq->ibcq.event_handler) {
-// 			ev.device = cq->ibcq.device;
-// 			ev.element.cq = &cq->ibcq;
-// 			ev.event = IB_EVENT_CQ_ERR;
-// 			cq->ibcq.event_handler(&ev, cq->ibcq.cq_context);
-// 		}
-
-// 		return -EBUSY;
-// 	}
-
-// 	addr = queue_producer_addr(cq->queue, QUEUE_TYPE_TO_CLIENT);
-// 	memcpy(addr, cqe, sizeof(*cqe));
-
-// 	queue_advance_producer(cq->queue, QUEUE_TYPE_TO_CLIENT);
-
-// 	spin_unlock_irqrestore(&cq->cq_lock, flags);
-
-// 	if ((cq->notify == IB_CQ_NEXT_COMP) ||
-// 	    (cq->notify == IB_CQ_SOLICITED && solicited)) {
-// 		cq->notify = 0;
-// 		tasklet_schedule(&cq->comp_task);
-// 	}
-
-// 	return 0;
-// }
 
 void dtld_cq_disable(struct dtld_cq *cq)
 {

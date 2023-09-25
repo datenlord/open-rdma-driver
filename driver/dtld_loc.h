@@ -8,16 +8,16 @@
 #define DTLD_LOC_H
 
 /* dtld_av.c */
-void dtld_init_av(struct rdma_ah_attr *attr, struct dtld_av *av);
+// void dtld_init_av(struct rdma_ah_attr *attr, struct dtld_av *av);
 
-int dtld_av_chk_attr(struct dtld_dev *dtld, struct rdma_ah_attr *attr);
+// int dtld_av_chk_attr(struct dtld_dev *dtld, struct rdma_ah_attr *attr);
 
-void dtld_av_from_attr(u8 port_num, struct dtld_av *av,
-		     struct rdma_ah_attr *attr);
+// void dtld_av_from_attr(u8 port_num, struct dtld_av *av,
+// 		     struct rdma_ah_attr *attr);
 
-void dtld_av_to_attr(struct dtld_av *av, struct rdma_ah_attr *attr);
+// void dtld_av_to_attr(struct dtld_av *av, struct rdma_ah_attr *attr);
 
-void dtld_av_fill_ip_info(struct dtld_av *av, struct rdma_ah_attr *attr);
+// void dtld_av_fill_ip_info(struct dtld_av *av, struct rdma_ah_attr *attr);
 
 // struct dtld_av *dtld_get_av(struct dtld_pkt_info *pkt, struct dtld_ah **ahp);
 
@@ -183,9 +183,6 @@ void rnr_nak_timer(struct timer_list *t);
 
 // void dtld_comp_queue_pkt(struct dtld_qp *qp, struct sk_buff *skb);
 
-static inline unsigned int wr_opcode_mask(int opcode, struct dtld_qp *qp)
-{
-	return dtld_wr_opcode_info[opcode].mask[qp->ibqp.qp_type];
-}
+
 
 #endif /* DTLD_LOC_H */

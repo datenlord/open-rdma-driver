@@ -175,8 +175,6 @@ static void dtld_qp_init_misc(struct dtld_dev *dtld, struct dtld_qp *qp,
 
 	spin_lock_init(&qp->state_lock);
 
-	atomic_set(&qp->ssn, 0);
-	atomic_set(&qp->skb_out, 0);
 }
 
 static int dtld_qp_init_send(struct dtld_dev *dtld, struct dtld_qp *qp,
@@ -425,12 +423,8 @@ int dtld_qp_chk_attr(struct dtld_dev *dtld, struct dtld_qp *qp,
 	if (mask & IB_QP_CAP && dtld_qp_chk_cap(dtld, &attr->cap, !!qp->srq))
 		goto err1;
 
-	if (mask & IB_QP_AV && dtld_av_chk_attr(dtld, &attr->ah_attr))
-		goto err1;
 
 	if (mask & IB_QP_ALT_PATH) {
-		if (dtld_av_chk_attr(dtld, &attr->alt_ah_attr))
-			goto err1;
 		if (!rdma_is_port_valid(&dtld->ib_dev, attr->alt_port_num))  {
 			pr_warn("invalid alt port %d\n", attr->alt_port_num);
 			goto err1;
@@ -613,11 +607,8 @@ int dtld_qp_from_attr(struct dtld_qp *qp, struct ib_qp_attr *attr, int mask,
 	if (mask & IB_QP_QKEY)
 		qp->attr.qkey = attr->qkey;
 
-	if (mask & IB_QP_AV)
-		dtld_init_av(&attr->ah_attr, &qp->pri_av);
 
 	if (mask & IB_QP_ALT_PATH) {
-		dtld_init_av(&attr->alt_ah_attr, &qp->alt_av);
 		qp->attr.alt_port_num = attr->alt_port_num;
 		qp->attr.alt_pkey_index = attr->alt_pkey_index;
 		qp->attr.alt_timeout = attr->alt_timeout;
@@ -630,14 +621,6 @@ int dtld_qp_from_attr(struct dtld_qp *qp, struct ib_qp_attr *attr, int mask,
 
 	if (mask & IB_QP_TIMEOUT) {
 		qp->attr.timeout = attr->timeout;
-		if (attr->timeout == 0) {
-			qp->qp_timeout_jiffies = 0;
-		} else {
-			/* According to the spec, timeout = 4.096 * 2 ^ attr->timeout [us] */
-			int j = nsecs_to_jiffies(4096ULL << attr->timeout);
-
-			qp->qp_timeout_jiffies = j ? j : 1;
-		}
 	}
 
 	if (mask & IB_QP_RETRY_CNT) {
@@ -655,7 +638,7 @@ int dtld_qp_from_attr(struct dtld_qp *qp, struct ib_qp_attr *attr, int mask,
 	}
 
 	if (mask & IB_QP_RQ_PSN) {
-		qp->attr.rq_psn = (attr->rq_psn & BTH_PSN_MASK);
+		qp->attr.rq_psn = attr->rq_psn;
 		qp->resp.psn = qp->attr.rq_psn;
 		pr_debug("qp#%d set resp psn = 0x%x\n", qp_num(qp),
 			 qp->resp.psn);
@@ -668,7 +651,7 @@ int dtld_qp_from_attr(struct dtld_qp *qp, struct ib_qp_attr *attr, int mask,
 	}
 
 	if (mask & IB_QP_SQ_PSN) {
-		qp->attr.sq_psn = (attr->sq_psn & BTH_PSN_MASK);
+		qp->attr.sq_psn = attr->sq_psn;
 		qp->req.psn = qp->attr.sq_psn;
 		qp->comp.psn = qp->attr.sq_psn;
 		pr_debug("qp#%d set req psn = 0x%x\n", qp_num(qp), qp->req.psn);
@@ -742,9 +725,6 @@ int dtld_qp_to_attr(struct dtld_qp *qp, struct ib_qp_attr *attr, int mask)
 		attr->cap.max_recv_sge		= qp->rq.max_sge;
 	}
 
-	dtld_av_to_attr(&qp->pri_av, &attr->ah_attr);
-	dtld_av_to_attr(&qp->alt_av, &attr->alt_ah_attr);
-
 	if (qp->req.state == QP_STATE_DRAIN) {
 		attr->sq_draining = 1;
 		/* applications that get this state
@@ -781,13 +761,8 @@ static void dtld_qp_do_cleanup(struct work_struct *work)
 	struct dtld_qp *qp = container_of(work, typeof(*qp), cleanup_work.work);
 
 	qp->valid = 0;
-	qp->qp_timeout_jiffies = 0;
 	dtld_cleanup_task(&qp->resp.task);
 
-	if (qp_type(qp) == IB_QPT_RC) {
-		del_timer_sync(&qp->retrans_timer);
-		del_timer_sync(&qp->rnr_nak_timer);
-	}
 
 	dtld_cleanup_task(&qp->req.task);
 	dtld_cleanup_task(&qp->comp.task);

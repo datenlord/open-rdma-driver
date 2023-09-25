@@ -246,36 +246,21 @@ struct dtld_qp {
 
 	// TODO: cleanup below
 
-	// struct socket		*sk;  // seems related to simulated nic
 	u32			dst_cookie;
-	// u16			src_port;   // seems related to simulated nic
+
 
 	struct dtld_av		pri_av;
 	struct dtld_av		alt_av;
 
 	atomic_t		mcg_num;
 
-	// struct sk_buff_head	req_pkts;
-	// struct sk_buff_head	resp_pkts;
 
 	struct dtld_req_info	req;
 	struct dtld_comp_info	comp;
 	struct dtld_resp_info	resp;
 
 	atomic_t		ssn;
-	atomic_t		skb_out;
-	int			need_req_skb;
 
-	/* Timer for retranmitting packet when ACKs have been lost. RC
-	 * only. The requester sets it when it is not already
-	 * started. The responder resets it whenever an ack is
-	 * received.
-	 */
-	struct timer_list retrans_timer;
-	u64 qp_timeout_jiffies;
-
-	/* Timer for handling RNR NAKS. */
-	struct timer_list rnr_nak_timer;
 
 	spinlock_t		state_lock; /* guard requester and completer */
 

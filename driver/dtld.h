@@ -10,8 +10,6 @@
 #include <rdma/ib_addr.h>
 // #include <crypto/hash.h>
 
-#include "dtld_opcode.h"
-#include "dtld_hdr.h"
 #include "dtld_param.h"
 #include "dtld_verbs.h"
 #include "dtld_loc.h"
