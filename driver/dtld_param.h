@@ -58,7 +58,6 @@ enum dtld_device_param {
 					| IB_DEVICE_MEM_WINDOW
 					| IB_DEVICE_MEM_WINDOW_TYPE_2B,
 	DTLD_MAX_SGE			= 32,
-	// TODO: define dtld_send_wqe for dtld
 
 	// DTLD_MAX_WQE_SIZE		= sizeof(struct dtld_send_wqe) +
 	// 				  sizeof(struct ib_sge) * DTLD_MAX_SGE,

@@ -716,48 +716,6 @@ static int irq_msi_setup(struct xdma_dev *xdev, struct pci_dev *pdev)
 	return rv;
 }
 
-static int irq_legacy_setup(struct xdma_dev *xdev, struct pci_dev *pdev)
-{
-    BUG();
-	// u32 w;
-	// u8 val;
-	// void *reg;
-	// int rv;
-
-	// pci_read_config_byte(pdev, PCI_INTERRUPT_PIN, &val);
-	// if (val == 0) {
-	// 	dbg_init("Legacy interrupt not supported\n");
-	// 	return -EINVAL;
-	// }
-
-	// dbg_init("Legacy Interrupt register value = %d\n", val);
-	// if (val > 1) {
-	// 	val--;
-	// 	w = (val << 24) | (val << 16) | (val << 8) | val;
-	// 	/* Program IRQ Block Channel vector and IRQ Block User vector
-	// 	 * with Legacy interrupt value
-	// 	 */
-	// 	reg = xdev->bar[xdev->config_bar_idx] + 0x2080; // IRQ user
-	// 	write_register(w, reg, 0x2080);
-	// 	write_register(w, reg + 0x4, 0x2084);
-	// 	write_register(w, reg + 0x8, 0x2088);
-	// 	write_register(w, reg + 0xC, 0x208C);
-	// 	reg = xdev->bar[xdev->config_bar_idx] + 0x20A0; // IRQ Block
-	// 	write_register(w, reg, 0x20A0);
-	// 	write_register(w, reg + 0x4, 0x20A4);
-	// }
-
-	// xdev->irq_line = (int)pdev->irq;
-	// rv = request_irq(pdev->irq, xdma_isr, IRQF_SHARED, xdev->mod_name,
-	// 		 xdev);
-	// if (rv)
-	// 	dbg_init("Couldn't use IRQ#%d, %d\n", pdev->irq, rv);
-	// else
-	// 	dbg_init("Using IRQ#%d with 0x%p\n", pdev->irq, xdev);
-
-	// return rv;
-}
-
 static int irq_msix_channel_setup(struct xdma_dev *xdev)
 {
 	int i;
@@ -835,7 +793,7 @@ static int irq_setup(struct xdma_dev *xdev, struct pci_dev *pdev)
         // FIXME: 默认路径
 		return irq_msi_setup(xdev, pdev);
     
-	return irq_legacy_setup(xdev, pdev);
+	return -EINVAL;
 }
 
 static int identify_bars(struct xdma_dev *xdev, int *bar_id_list, int num_bars,
