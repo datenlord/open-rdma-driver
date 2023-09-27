@@ -327,13 +327,6 @@ struct xdma_engine {
 	int desc_idx;			/* current descriptor index */
 	int desc_used;			/* total descriptors used */
 
-	/* for performance test support */
-	// struct xdma_performance_ioctl *xdma_perf;	/* perf test control */
-// #if	HAS_SWAKE_UP
-// 	struct swait_queue_head xdma_perf_wq;
-// #else
-// 	wait_queue_head_t xdma_perf_wq;	/* Perf test sync */
-// #endif
 
 	struct xdma_kthread *cmplthp;
 	/* completion status thread list for the queue */
@@ -343,16 +336,6 @@ struct xdma_engine {
 	unsigned int intr_work_cpu;
 };
 
-struct xdma_user_irq {
-	struct xdma_dev *xdev;		/* parent device */
-	u8 user_idx;			/* 0 ~ 15 */
-	u8 events_irq;			/* accumulated IRQs */
-	spinlock_t events_lock;		/* lock to safely update events_irq */
-	wait_queue_head_t events_wq;	/* wait queue to sync waiting threads */
-	irq_handler_t handler;
-
-	void *dev;
-};
 
 #define XDEV_FLAG_OFFLINE	0x1
 struct xdma_dev {
@@ -382,13 +365,9 @@ struct xdma_dev {
 
 	/* Interrupt management */
 	int irq_count;		/* interrupt counter */
-	int irq_line;		/* flag if irq allocated successfully */
-	int msi_enabled;	/* flag if msi was enabled for the device */
-	int msix_enabled;	/* flag if msi-x was enabled for the device */
 #if KERNEL_VERSION(4, 12, 0) > LINUX_VERSION_CODE
 	struct msix_entry entry[32];	/* msi-x vector/entry table */
 #endif
-	struct xdma_user_irq user_irq[16];	/* user IRQ management */
 	unsigned int mask_irq_user;
 
 	/* XDMA engine management */
@@ -426,8 +405,6 @@ struct xdma_dev *xdev_find_by_pdev(struct pci_dev *pdev);
 void *xdma_device_open(const char *mname, struct pci_dev *pdev, int *user_max,
 		       int *h2c_channel_max, int *c2h_channel_max) __attribute__((used));
 
-int xdma_user_isr_enable(void *dev_hndl, unsigned int mask);
-
-int engine_service_poll(struct xdma_engine *engine, u32 expected_desc_count);
+// int engine_service_poll(struct xdma_engine *engine, u32 expected_desc_count);
 
 #endif

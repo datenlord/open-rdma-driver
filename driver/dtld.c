@@ -134,34 +134,6 @@ static int dtld_dev_init_xdma(struct pci_dev *pdev, const struct pci_device_id *
 		goto err_out;
 	}
 
-	if (xpdev->user_max > MAX_USER_IRQ) {
-		pr_err("Maximum users limit reached\n");
-		rv = -EINVAL;
-		goto err_out;
-	}
-
-	if (xpdev->h2c_channel_max > XDMA_CHANNEL_NUM_MAX) {
-		pr_err("Maximun H2C channel limit reached\n");
-		rv = -EINVAL;
-		goto err_out;
-	}
-
-	if (xpdev->c2h_channel_max > XDMA_CHANNEL_NUM_MAX) {
-		pr_err("Maximun C2H channel limit reached\n");
-		rv = -EINVAL;
-		goto err_out;
-	}
-
-	if (!xpdev->h2c_channel_max && !xpdev->c2h_channel_max)
-		pr_warn("NO engine found!\n");
-
-	if (xpdev->user_max) {
-		u32 mask = (1 << (xpdev->user_max + 1)) - 1;
-
-		rv = xdma_user_isr_enable(hndl, mask);
-		if (rv)
-			goto err_out;
-	}
 
 	/* make sure no duplicate */
 	*xdev = xdev_find_by_pdev(pdev);

@@ -10,5 +10,4 @@ dtld_ib-y := \
 	dtld_qp.o \
 	dtld_queue.o \
 	xdma.o \
-	libxdma.o \
-	xdma_thread.o
+	libxdma.o
