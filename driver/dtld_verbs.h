@@ -2,7 +2,6 @@
 #define DTLD_VERBS_H
 
 #include "dtld_pool.h"
-#include "dtld_task.h"
 #include "dtld_queue.h"
 #include "rdma/ib_verbs.h"
 
@@ -14,8 +13,6 @@ struct dtld_port {
 	__be64			subnet_prefix;
 	spinlock_t		port_lock; /* guard port */
 	unsigned int		mtu_cap;
-	/* special QPs */
-	u32			qp_gsi_index;
 };
 
 struct dtld_dev {
@@ -46,73 +43,11 @@ enum dtld_qp_state {
 
 struct dtld_req_info {
 	enum dtld_qp_state	state;
-	int			wqe_index;
-	u32			psn;
-	int			opcode;
-	atomic_t		rd_atomic;
-	int			wait_fence;
-	int			need_rd_atomic;
-	int			wait_psn;
-	int			need_retry;
-	int			noack_pkts;
-	struct dtld_task		task;
-};
-
-struct dtld_comp_info {
-	u32			psn;
-	int			opcode;
-	int			timeout;
-	int			timeout_retry;
-	int			started_retry;
-	u32			retry_cnt;
-	u32			rnr_retry;
-	struct dtld_task		task;
-};
-
-enum rdatm_res_state {
-	rdatm_res_state_next,
-	rdatm_res_state_new,
-	rdatm_res_state_replay,
 };
 
 struct dtld_resp_info {
 	enum dtld_qp_state	state;
-	u32			msn;
-	u32			psn;
-	u32			ack_psn;
-	int			opcode;
-	int			drop_msg;
-	int			goto_error;
-	int			sent_psn_nak;
 	enum ib_wc_status	status;
-	u8			aeth_syndrome;
-
-	/* Receive only */
-	struct dtld_recv_wqe	*wqe;
-
-	/* RDMA read / atomic only */
-	u64			va;
-	u64			offset;
-	struct dtld_mr		*mr;
-	u32			resid;
-	u32			rkey;
-	u32			length;
-	u64			atomic_orig;
-
-	/* SRQ only */
-	struct {
-		struct dtld_recv_wqe	wqe;
-		struct ib_sge		sge[DTLD_MAX_SGE];
-	} srq_wqe;
-
-	/* Responder resources. It's a circular list where the oldest
-	 * resource is dropped first.
-	 */
-	struct resp_res		*resources;
-	unsigned int		res_head;
-	unsigned int		res_tail;
-	struct resp_res		*res;
-	struct dtld_task		task;
 };
 
 
@@ -204,27 +139,6 @@ struct dtld_srq {
 	int			error;
 };
 
-struct resp_res {
-	int			type;
-	int			replay;
-	u32			first_psn;
-	u32			last_psn;
-	u32			cur_psn;
-	enum rdatm_res_state	state;
-
-	union {
-		struct {
-			struct sk_buff	*skb;
-		} atomic;
-		struct {
-			u64		va_org;
-			u32		rkey;
-			u32		length;
-			u64		va;
-			u32		resid;
-		} read;
-	};
-};
 
 struct dtld_qp {
 	struct ib_qp		ibqp;
@@ -256,7 +170,6 @@ struct dtld_qp {
 
 
 	struct dtld_req_info	req;
-	struct dtld_comp_info	comp;
 	struct dtld_resp_info	resp;
 
 	atomic_t		ssn;

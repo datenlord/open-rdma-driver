@@ -14,7 +14,6 @@
 #include "dtld.h"
 #include "dtld_loc.h"
 #include "dtld_queue.h"
-#include "dtld_task.h"
 
 static int dtld_qp_chk_cap(struct dtld_dev *dtld, struct ib_qp_cap *cap,
 			  int has_srq)
@@ -64,10 +63,8 @@ int dtld_qp_chk_init(struct dtld_dev *dtld, struct ib_qp_init_attr *init)
 	int port_num = init->port_num;
 
 	switch (init->qp_type) {
-	case IB_QPT_GSI:
 	case IB_QPT_RC:
-	case IB_QPT_UC:
-	case IB_QPT_UD:
+		// only support RC for now, add more as fallthrough item later. 
 		break;
 	default:
 		return -EOPNOTSUPP;
@@ -78,74 +75,18 @@ int dtld_qp_chk_init(struct dtld_dev *dtld, struct ib_qp_init_attr *init)
 		goto err1;
 	}
 
+	if (init->srq) {
+		pr_warn("not support srq\n");
+		goto err1;
+	}
+
 	if (dtld_qp_chk_cap(dtld, cap, !!init->srq))
 		goto err1;
-
-	if (init->qp_type == IB_QPT_GSI) {
-		if (!rdma_is_port_valid(&dtld->ib_dev, port_num)) {
-			pr_warn("invalid port = %d\n", port_num);
-			goto err1;
-		}
-
-		port = &dtld->port;
-
-		if (init->qp_type == IB_QPT_GSI && port->qp_gsi_index) {
-			pr_warn("GSI QP exists for port %d\n", port_num);
-			goto err1;
-		}
-	}
 
 	return 0;
 
 err1:
 	return -EINVAL;
-}
-
-static int alloc_rd_atomic_resources(struct dtld_qp *qp, unsigned int n)
-{
-	qp->resp.res_head = 0;
-	qp->resp.res_tail = 0;
-	qp->resp.resources = kcalloc(n, sizeof(struct resp_res), GFP_KERNEL);
-
-	if (!qp->resp.resources)
-		return -ENOMEM;
-
-	return 0;
-}
-
-static void free_rd_atomic_resources(struct dtld_qp *qp)
-{
-	if (qp->resp.resources) {
-		int i;
-
-		for (i = 0; i < qp->attr.max_dest_rd_atomic; i++) {
-			struct resp_res *res = &qp->resp.resources[i];
-
-			free_rd_atomic_resource(qp, res);
-		}
-		kfree(qp->resp.resources);
-		qp->resp.resources = NULL;
-	}
-}
-
-void free_rd_atomic_resource(struct dtld_qp *qp, struct resp_res *res)
-{
-	// if (res->type == DTLD_ATOMIC_MASK)
-	// 	kfree_skb(res->atomic.skb);
-	res->type = 0;
-}
-
-static void cleanup_rd_atomic_resources(struct dtld_qp *qp)
-{
-	int i;
-	struct resp_res *res;
-
-	if (qp->resp.resources) {
-		for (i = 0; i < qp->attr.max_dest_rd_atomic; i++) {
-			res = &qp->resp.resources[i];
-			free_rd_atomic_resource(qp, res);
-		}
-	}
 }
 
 static void dtld_qp_init_misc(struct dtld_dev *dtld, struct dtld_qp *qp,
@@ -162,11 +103,7 @@ static void dtld_qp_init_misc(struct dtld_dev *dtld, struct dtld_qp *qp,
 	port			= &dtld->port;
 
 	switch (init->qp_type) {
-	case IB_QPT_GSI:
-		qp->ibqp.qp_num		= 1;
-		port->qp_gsi_index	= qpn;
-		qp->attr.port_num	= init->port_num;
-		break;
+		// if we support GSI or SMI, we can do something special for those special QP here.
 
 	default:
 		qp->ibqp.qp_num		= qpn;
@@ -224,19 +161,7 @@ static int dtld_qp_init_send(struct dtld_dev *dtld, struct dtld_qp *qp,
 	qp->sq.max_inline = init->cap.max_inline_data = wqe_size;
 	wqe_size += sizeof(struct dtld_send_wqe);
 
-	// type = QUEUE_TYPE_FROM_CLIENT;
-	// qp->sq.queue = dtld_queue_init(dtld, &qp->sq.max_wr,
-	// 			wqe_size, type);
-	// if (!qp->sq.queue)
-	// 	return -ENOMEM;
-
-	// TODO: fill up `qp->req.wqe_index`?
-	// qp->req.wqe_index = queue_get_producer(qp->sq.queue,
-	// 				       QUEUE_TYPE_FROM_CLIENT);
-
 	qp->req.state		= QP_STATE_RESET;
-	qp->req.opcode		= -1;
-	qp->comp.opcode		= -1;
 
 	uresp->sq_offset = mmap_offset;
 	uresp->sq_len = PAGE_SIZE;
@@ -283,12 +208,6 @@ static int dtld_qp_init_recv(struct dtld_dev *dtld, struct dtld_qp *qp,
 		pr_debug("qp#%d max_wr = %d, max_sge = %d, wqe_size = %d\n",
 			 qp_num(qp), qp->rq.max_wr, qp->rq.max_sge, wqe_size);
 
-		// type = QUEUE_TYPE_FROM_CLIENT;
-		// qp->rq.queue = dtld_queue_init(dtld, &qp->rq.max_wr,
-		// 			wqe_size, type);
-		// if (!qp->rq.queue)
-		// 	return -ENOMEM;
-
 		uresp->rq_offset = mmap_offset;
 		uresp->rq_len = PAGE_SIZE;
 	}
@@ -296,7 +215,6 @@ static int dtld_qp_init_recv(struct dtld_dev *dtld, struct dtld_qp *qp,
 	spin_lock_init(&qp->rq.producer_lock);
 	spin_lock_init(&qp->rq.consumer_lock);
 
-	qp->resp.msn		= 0;
 	qp->resp.state		= QP_STATE_RESET;
 
 	return 0;
@@ -425,15 +343,8 @@ int dtld_qp_chk_attr(struct dtld_dev *dtld, struct dtld_qp *qp,
 
 
 	if (mask & IB_QP_ALT_PATH) {
-		if (!rdma_is_port_valid(&dtld->ib_dev, attr->alt_port_num))  {
-			pr_warn("invalid alt port %d\n", attr->alt_port_num);
-			goto err1;
-		}
-		if (attr->alt_timeout > 31) {
-			pr_warn("invalid QP alt timeout %d > 31\n",
-				attr->alt_timeout);
-			goto err1;
-		}
+		pr_warn("alt path not supported\n");
+		goto err1;
 	}
 
 	if (mask & IB_QP_PATH_MTU) {
@@ -476,58 +387,16 @@ err1:
 /* move the qp to the reset state */
 static void dtld_qp_reset(struct dtld_qp *qp)
 {
-	/* stop tasks from running */
-	dtld_disable_task(&qp->resp.task);
 
-	/* stop request/comp */
-	if (qp->sq.queue) {
-		if (qp_type(qp) == IB_QPT_RC)
-			dtld_disable_task(&qp->comp.task);
-		dtld_disable_task(&qp->req.task);
-	}
+	// TODO: communicate with real hardware to reset the qp
 
 	/* move qp to the reset state */
 	qp->req.state = QP_STATE_RESET;
 	qp->resp.state = QP_STATE_RESET;
 
-	/* let state machines reset themselves drain work and packet queues
-	 * etc.
-	 */
-	__dtld_do_task(&qp->resp.task);
-
-	if (qp->sq.queue) {
-		__dtld_do_task(&qp->comp.task);
-		__dtld_do_task(&qp->req.task);
-		dtld_queue_reset(qp->sq.queue);
-	}
 
 	/* cleanup attributes */
 	atomic_set(&qp->ssn, 0);
-	qp->req.opcode = -1;
-	qp->req.need_retry = 0;
-	qp->req.noack_pkts = 0;
-	qp->resp.msn = 0;
-	qp->resp.opcode = -1;
-	qp->resp.drop_msg = 0;
-	qp->resp.goto_error = 0;
-	qp->resp.sent_psn_nak = 0;
-
-	if (qp->resp.mr) {
-		dtld_put(qp->resp.mr);
-		qp->resp.mr = NULL;
-	}
-
-	cleanup_rd_atomic_resources(qp);
-
-	/* reenable tasks */
-	dtld_enable_task(&qp->resp.task);
-
-	if (qp->sq.queue) {
-		if (qp_type(qp) == IB_QPT_RC)
-			dtld_enable_task(&qp->comp.task);
-
-		dtld_enable_task(&qp->req.task);
-	}
 }
 
 /* drain the send queue */
@@ -536,11 +405,7 @@ static void dtld_qp_drain(struct dtld_qp *qp)
 	if (qp->sq.queue) {
 		if (qp->req.state != QP_STATE_DRAINED) {
 			qp->req.state = QP_STATE_DRAIN;
-			if (qp_type(qp) == IB_QPT_RC)
-				dtld_run_task(&qp->comp.task, 1);
-			else
-				__dtld_do_task(&qp->comp.task);
-			dtld_run_task(&qp->req.task, 1);
+			// TODO: communicate with real hardware to drain the qp
 		}
 	}
 }
@@ -552,28 +417,21 @@ void dtld_qp_error(struct dtld_qp *qp)
 	qp->resp.state = QP_STATE_ERROR;
 	qp->attr.qp_state = IB_QPS_ERR;
 
-	/* drain work and packet queues */
-	dtld_run_task(&qp->resp.task, 1);
+	// TODO: communicate with real hardware to move qp to error state
 
-	if (qp_type(qp) == IB_QPT_RC)
-		dtld_run_task(&qp->comp.task, 1);
-	else
-		__dtld_do_task(&qp->comp.task);
-	dtld_run_task(&qp->req.task, 1);
 }
 
 /* called by the modify qp verb */
 int dtld_qp_from_attr(struct dtld_qp *qp, struct ib_qp_attr *attr, int mask,
 		     struct ib_udata *udata)
 {
-	int err;
+	// int err;
 
 	if (mask & IB_QP_MAX_QP_RD_ATOMIC) {
 		int max_rd_atomic = attr->max_rd_atomic ?
 			roundup_pow_of_two(attr->max_rd_atomic) : 0;
 
 		qp->attr.max_rd_atomic = max_rd_atomic;
-		atomic_set(&qp->req.rd_atomic, max_rd_atomic);
 	}
 
 	if (mask & IB_QP_MAX_DEST_RD_ATOMIC) {
@@ -581,12 +439,6 @@ int dtld_qp_from_attr(struct dtld_qp *qp, struct ib_qp_attr *attr, int mask,
 			roundup_pow_of_two(attr->max_dest_rd_atomic) : 0;
 
 		qp->attr.max_dest_rd_atomic = max_dest_rd_atomic;
-
-		free_rd_atomic_resources(qp);
-
-		err = alloc_rd_atomic_resources(qp, max_dest_rd_atomic);
-		if (err)
-			return err;
 	}
 
 	if (mask & IB_QP_CUR_STATE)
@@ -625,23 +477,21 @@ int dtld_qp_from_attr(struct dtld_qp *qp, struct ib_qp_attr *attr, int mask,
 
 	if (mask & IB_QP_RETRY_CNT) {
 		qp->attr.retry_cnt = attr->retry_cnt;
-		qp->comp.retry_cnt = attr->retry_cnt;
 		pr_debug("qp#%d set retry count = %d\n", qp_num(qp),
 			 attr->retry_cnt);
 	}
 
 	if (mask & IB_QP_RNR_RETRY) {
 		qp->attr.rnr_retry = attr->rnr_retry;
-		qp->comp.rnr_retry = attr->rnr_retry;
 		pr_debug("qp#%d set rnr retry count = %d\n", qp_num(qp),
 			 attr->rnr_retry);
 	}
 
 	if (mask & IB_QP_RQ_PSN) {
 		qp->attr.rq_psn = attr->rq_psn;
-		qp->resp.psn = qp->attr.rq_psn;
+
 		pr_debug("qp#%d set resp psn = 0x%x\n", qp_num(qp),
-			 qp->resp.psn);
+			 attr->rq_psn);
 	}
 
 	if (mask & IB_QP_MIN_RNR_TIMER) {
@@ -652,9 +502,7 @@ int dtld_qp_from_attr(struct dtld_qp *qp, struct ib_qp_attr *attr, int mask,
 
 	if (mask & IB_QP_SQ_PSN) {
 		qp->attr.sq_psn = attr->sq_psn;
-		qp->req.psn = qp->attr.sq_psn;
-		qp->comp.psn = qp->attr.sq_psn;
-		pr_debug("qp#%d set req psn = 0x%x\n", qp_num(qp), qp->req.psn);
+		pr_debug("qp#%d set req psn = 0x%x\n", qp_num(qp), attr->sq_psn);
 	}
 
 	if (mask & IB_QP_PATH_MIG_STATE)
@@ -713,8 +561,8 @@ int dtld_qp_to_attr(struct dtld_qp *qp, struct ib_qp_attr *attr, int mask)
 {
 	*attr = qp->attr;
 
-	attr->rq_psn				= qp->resp.psn;
-	attr->sq_psn				= qp->req.psn;
+	attr->rq_psn				= qp->attr.rq_psn;
+	attr->sq_psn				= qp->attr.sq_psn;
 
 	attr->cap.max_send_wr			= qp->sq.max_wr;
 	attr->cap.max_send_sge			= qp->sq.max_sge;
@@ -761,18 +609,6 @@ static void dtld_qp_do_cleanup(struct work_struct *work)
 	struct dtld_qp *qp = container_of(work, typeof(*qp), cleanup_work.work);
 
 	qp->valid = 0;
-	dtld_cleanup_task(&qp->resp.task);
-
-
-	dtld_cleanup_task(&qp->req.task);
-	dtld_cleanup_task(&qp->comp.task);
-
-	/* flush out any receive wr's or pending requests */
-	__dtld_do_task(&qp->req.task);
-	if (qp->sq.queue) {
-		__dtld_do_task(&qp->comp.task);
-		__dtld_do_task(&qp->req.task);
-	}
 
 	if (qp->sq.queue)
 		dtld_queue_cleanup(qp->sq.queue);
@@ -794,16 +630,6 @@ static void dtld_qp_do_cleanup(struct work_struct *work)
 	if (qp->pd)
 		dtld_put(qp->pd);
 
-	if (qp->resp.mr)
-		dtld_put(qp->resp.mr);
-
-	// if (qp_type(qp) == IB_QPT_RC)
-	// 	sk_dst_reset(qp->sk->sk);
-
-	free_rd_atomic_resources(qp);
-
-	// kernel_sock_shutdown(qp->sk, SHUT_RDWR);
-	// sock_release(qp->sk);
 }
 
 /* called when the last reference to the qp is dropped */
