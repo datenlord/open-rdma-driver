@@ -7,6 +7,7 @@
 
 #include "libxdma.h"
 
+#include "linux/xarray.h"
 struct dtld_port {
 	struct ib_port_attr	attr;
 	__be64			port_guid;
@@ -195,7 +196,7 @@ struct dtld_map_set {
 	struct dtld_map		**map;
 	u64			va;
 	u64			iova;
-	size_t			length;
+	size_t		length;
 	u32			offset;
 	u32			nbuf;
 	int			page_shift;
@@ -220,18 +221,20 @@ struct dtld_mr {
 	enum ib_mr_type		type;
 	int			access;
 
+	struct xarray	*page_table;
+
 	// int			map_shift;
 	// int			map_mask;
 
-	u32			num_buf;
+	// u32			num_buf;
 
-	u32			max_buf;
-	u32			num_map;
+	// u32			max_buf;
+	// u32			num_map;
 
-	atomic_t		num_mw;
+	// atomic_t		num_mw;
 
-	struct dtld_map_set	*cur_map_set;
-	struct dtld_map_set	*next_map_set;
+	// struct dtld_map_set	*cur_map_set;
+	// struct dtld_map_set	*next_map_set;
 };
 
 static inline struct dtld_ucontext *to_dtld_uc(struct ib_ucontext *uc)
