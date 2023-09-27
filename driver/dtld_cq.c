@@ -74,36 +74,17 @@ int dtld_cq_from_init(struct dtld_dev *dtld, struct dtld_cq *cq, int cqe,
 	uresp->cq_id = cq->elem.index;
 
 
-	// cq->is_dying = false;
-	// tasklet_setup(&cq->comp_task, dtld_send_complete);
-
 	spin_lock_init(&cq->cq_lock);
 	cq->ibcq.cqe = cqe;
 	return 0;
 }
-
-// int dtld_cq_resize_queue(struct dtld_cq *cq, int cqe,
-// 			struct dtld_resize_cq_resp __user *uresp,
-// 			struct ib_udata *udata)
-// {
-// 	int err;
-
-// 	err = dtld_queue_resize(cq->queue, (unsigned int *)&cqe,
-// 			       sizeof(struct dtld_cqe), udata,
-// 			       uresp ? &uresp->mi : NULL, NULL, &cq->cq_lock);
-// 	if (!err)
-// 		cq->ibcq.cqe = cqe;
-
-// 	return err;
-// }
-
 
 void dtld_cq_disable(struct dtld_cq *cq)
 {
 	unsigned long flags;
 
 	spin_lock_irqsave(&cq->cq_lock, flags);
-	cq->is_dying = true;
+	// TODO do something here
 	spin_unlock_irqrestore(&cq->cq_lock, flags);
 }
 

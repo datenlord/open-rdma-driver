@@ -98,8 +98,6 @@ struct dtld_cq {
 	struct dtld_queue	*queue;
 	spinlock_t		cq_lock;
 	u8			notify;
-	bool			is_dying;
-	// bool			is_user;    // TODO delete me
 	struct tasklet_struct	comp_task;
 	atomic_t		num_wq;
 };
@@ -146,7 +144,6 @@ struct dtld_qp {
 	struct ib_qp_attr	attr;
 	unsigned int		valid;
 	unsigned int		mtu;
-	// bool			is_user;  // TODO delete me
 
 	struct dtld_pd		*pd;
 	struct dtld_srq		*srq;
@@ -158,26 +155,11 @@ struct dtld_qp {
 	struct dtld_sq		sq;
 	struct dtld_rq		rq;
 
-	// TODO: cleanup below
-
-	u32			dst_cookie;
-
-
-	struct dtld_av		pri_av;
-	struct dtld_av		alt_av;
-
-	atomic_t		mcg_num;
-
 
 	struct dtld_req_info	req;
 	struct dtld_resp_info	resp;
 
 	atomic_t		ssn;
-
-
-	spinlock_t		state_lock; /* guard requester and completer */
-
-	struct execute_work	cleanup_work;
 };
 
 #define DTLD_BUF_PER_MAP		(PAGE_SIZE / sizeof(struct dtld_phys_buf))
@@ -219,9 +201,6 @@ struct dtld_mr {
 	enum dtld_mr_state	state;
 	enum ib_mr_type		type;
 	int			access;
-
-	// int			map_shift;
-	// int			map_mask;
 
 	u32			num_buf;
 

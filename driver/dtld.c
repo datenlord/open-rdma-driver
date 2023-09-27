@@ -245,7 +245,7 @@ static int __init dtld_ib_init(void)
 
 static void __exit dtld_ib_cleanup(void)
 {
-	
+	// TODO: our device is not hot-plug capable, so it can't do any useful things here.
 }
 
 module_init(dtld_ib_init);

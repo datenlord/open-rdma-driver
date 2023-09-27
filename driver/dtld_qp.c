@@ -110,8 +110,6 @@ static void dtld_qp_init_misc(struct dtld_dev *dtld, struct dtld_qp *qp,
 		break;
 	}
 
-	spin_lock_init(&qp->state_lock);
-
 }
 
 static int dtld_qp_init_send(struct dtld_dev *dtld, struct dtld_qp *qp,
@@ -591,23 +589,20 @@ int dtld_qp_to_attr(struct dtld_qp *qp, struct ib_qp_attr *attr, int mask)
 
 int dtld_qp_chk_destroy(struct dtld_qp *qp)
 {
+	// TODO: do some check here before destroy the QP, for example, we don't support multicast now.
+	// but when we support it, we should do some check:
+
 	/* See IBA o10-2.2.3
 	 * An attempt to destroy a QP while attached to a mcast group
 	 * will fail immediately.
 	 */
-	if (atomic_read(&qp->mcg_num)) {
-		pr_debug("Attempt to destroy QP while attached to multicast group\n");
-		return -EBUSY;
-	}
 
 	return 0;
 }
 
 /* called when the last reference to the qp is dropped */
-static void dtld_qp_do_cleanup(struct work_struct *work)
+static void dtld_qp_do_cleanup(struct dtld_qp *qp)
 {
-	struct dtld_qp *qp = container_of(work, typeof(*qp), cleanup_work.work);
-
 	qp->valid = 0;
 
 	if (qp->sq.queue)
@@ -636,6 +631,5 @@ static void dtld_qp_do_cleanup(struct work_struct *work)
 void dtld_qp_cleanup(struct dtld_pool_elem *elem)
 {
 	struct dtld_qp *qp = container_of(elem, typeof(*qp), elem);
-
-	execute_in_process_context(dtld_qp_do_cleanup, &qp->cleanup_work);
+	dtld_qp_do_cleanup(qp);
 }

@@ -40,7 +40,6 @@ static void dtld_mr_init(int access, struct dtld_mr *mr)
 	mr->rkey = mr->ibmr.rkey = rkey;
 
 	mr->state = DTLD_MR_STATE_INVALID;
-	// mr->map_shift = ilog2(DTLD_BUF_PER_MAP);
 }
 
 static void dtld_mr_free_map_set(int num_map, struct dtld_map_set *set)

@@ -6,6 +6,7 @@
 
 #include "asm-generic/errno-base.h"
 #include "asm/page_types.h"
+#include "linux/errno.h"
 #include "linux/gfp.h"
 #include "linux/slab.h"
 #include "rdma/ib_verbs.h"
@@ -34,27 +35,20 @@ static int dtld_query_device(struct ib_device *dev,
 static int dtld_query_port(struct ib_device *dev,
 			  u32 port_num, struct ib_port_attr *attr)
 {
-	// struct dtld_dev *rxe = dtld_from_ibdev(dev);
-	// int rc;
+	struct dtld_dev *rxe = dtld_from_ibdev(dev);
+	
 
-	// /* *attr being zeroed by the caller, avoid zeroing it here */
-	// *attr = rxe->port.attr;
+	/* *attr being zeroed by the caller, avoid zeroing it here */
+	*attr = rxe->port.attr;
 
-	// mutex_lock(&rxe->usdev_lock);
-	// rc = ib_get_eth_speed(dev, port_num, &attr->active_speed,
-	// 		      &attr->active_width);
 
-	// if (attr->state == IB_PORT_ACTIVE)
-		attr->state = IB_PORT_ACTIVE;
-		attr->phys_state = IB_PORT_PHYS_STATE_LINK_UP;
-	// else if (dev_get_flags(rxe->ndev) & IFF_UP)
-	// 	attr->phys_state = IB_PORT_PHYS_STATE_POLLING;
-	// else
-	// 	attr->phys_state = IB_PORT_PHYS_STATE_DISABLED;
+	// TODO: port state should be changed according to real hardware status, not hardcoded.
 
-	// mutex_unlock(&rxe->usdev_lock);
+	// TODO: need lock here?
 
-	// return rc;
+	attr->state = IB_PORT_ACTIVE;
+	attr->phys_state = IB_PORT_PHYS_STATE_LINK_UP;
+
 	return 0;
 }
 
@@ -76,26 +70,26 @@ static int dtld_alloc_ucontext(struct ib_ucontext *ibuc, struct ib_udata *udata)
 
 static void dtld_dealloc_ucontext(struct ib_ucontext *ibuc)
 {
-	// struct dtld_ucontext *uc = to_ruc(ibuc);
-
-	// dtld_put(uc);
+	struct dtld_ucontext *uc = to_dtld_uc(ibuc);
+	dtld_put(uc);
 }
 
 static int dtld_port_immutable(struct ib_device *dev, u32 port_num,
 			      struct ib_port_immutable *immutable)
 {
-	// int err;
-	// struct ib_port_attr attr;
+	int err;
+	struct ib_port_attr attr;
 
-	// immutable->core_cap_flags = RDMA_CORE_PORT_IBA_ROCE_UDP_ENCAP;
+	// TODO: check if this flag is right
+	immutable->core_cap_flags = RDMA_CORE_PORT_IBA_ROCE_UDP_ENCAP;
 
-	// err = ib_query_port(dev, port_num, &attr);
-	// if (err)
-	// 	return err;
+	err = ib_query_port(dev, port_num, &attr);
+	if (err)
+		return err;
 
-	// immutable->pkey_tbl_len = attr.pkey_tbl_len;
-	// immutable->gid_tbl_len = attr.gid_tbl_len;
-	// immutable->max_mad_size = IB_MGMT_MAD_SIZE;
+	immutable->pkey_tbl_len = attr.pkey_tbl_len;
+	immutable->gid_tbl_len = attr.gid_tbl_len;
+	immutable->max_mad_size = IB_MGMT_MAD_SIZE;
 
 	return 0;
 }
@@ -199,10 +193,7 @@ static int dtld_modify_qp(struct ib_qp *ibqp, struct ib_qp_attr *attr,
 	if (err)
 		goto err1;
 
-	// if ((mask & IB_QP_AV) && (attr->ah_attr.ah_flags & IB_AH_GRH))
-	// 	qp->src_port = rdma_get_udp_sport(attr->ah_attr.grh.flow_label,
-	// 					  qp->ibqp.qp_num,
-	// 					  qp->attr.dest_qp_num);
+	// TODO: figure out the relationship between RoCE port and UDP port
 
 	return 0;
 
@@ -335,13 +326,13 @@ static int dtld_destroy_cq(struct ib_cq *ibcq, struct ib_udata *udata)
 static int dtld_poll_cq(struct ib_cq *ibcq, int num_entries, struct ib_wc *wc)
 {
 	// TODO: not supported in kernel now, support when our userspace driver is stable.
-	return 0;
+	return -ENOTSUPP;
 }
 
 static int dtld_peek_cq(struct ib_cq *ibcq, int wc_cnt)
 {
 	// TODO: not supported in kernel now, support when our userspace driver is stable.
-	return 0;
+	return -ENOTSUPP;
 }
 
 static struct ib_mr *dtld_reg_user_mr(struct ib_pd *ibpd,
@@ -434,8 +425,8 @@ static const struct ib_device_ops dtld_dev_ops = {
 	// .modify_port = dtld_modify_port,
 	.modify_qp = dtld_modify_qp,
 	// .modify_srq = dtld_modify_srq,
-	// .peek_cq = dtld_peek_cq,
-	// .poll_cq = dtld_poll_cq,
+	.peek_cq = dtld_peek_cq,
+	.poll_cq = dtld_poll_cq,
 	.post_recv = dtld_post_recv,
 	.post_send = dtld_post_send,
 	// .post_srq_recv = dtld_post_srq_recv,
