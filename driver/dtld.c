@@ -127,8 +127,7 @@ static int dtld_dev_init_xdma(struct pci_dev *pdev, const struct pci_device_id *
 	if (!xpdev)
 		return -ENOMEM;
 
-	hndl = xdma_device_open("xdma", pdev, &xpdev->user_max,
-			&xpdev->h2c_channel_max, &xpdev->c2h_channel_max);
+	hndl = xdma_device_open("xdma", pdev);
 	if (!hndl) {
 		rv = -EINVAL;
 		goto err_out;
@@ -148,11 +147,6 @@ static int dtld_dev_init_xdma(struct pci_dev *pdev, const struct pci_device_id *
 		rv =  -EINVAL;
 		goto err_out;
 	}
-
-	// pr_info("%s xdma%d, pdev 0x%p, xdev 0x%p, 0x%p, usr %d, ch %d,%d.\n",
-	// 	dev_name(&pdev->dev), xdev->idx, pdev, xpdev, xdev,
-	// 	xpdev->user_max, xpdev->h2c_channel_max,
-	// 	xpdev->c2h_channel_max);
 
 	xpdev->xdev = hndl;
 

@@ -26,45 +26,10 @@ static inline u32 build_u32(u32 hi, u32 lo)
 	return ((hi & 0xFFFFUL) << 16) | (lo & 0xFFFFUL);
 }
 
-static void pci_check_intr_pend(struct pci_dev *pdev)
-{
-	u16 v;
-
-	pci_read_config_word(pdev, PCI_STATUS, &v);
-	if (v & PCI_STATUS_INTERRUPT) {
-		pr_info("%s PCI STATUS Interrupt pending 0x%x.\n",
-			dev_name(&pdev->dev), v);
-		pci_write_config_word(pdev, PCI_STATUS, PCI_STATUS_INTERRUPT);
-	}
-}
-
-/* read_interrupts -- Print the interrupt controller status */
-static u32 read_interrupts(struct xdma_dev *xdev)
-{
-	struct interrupt_regs *reg =
-		(struct interrupt_regs *)(xdev->bar[xdev->config_bar_idx] +
-					  XDMA_OFS_INT_CTRL);
-	u32 lo;
-	u32 hi;
-
-	/* extra debugging; inspect complete engine set of registers */
-	hi = read_register(&reg->user_int_request);
-	dbg_io("ioread32(0x%p) returned 0x%08x (user_int_request).\n",
-	       &reg->user_int_request, hi);
-	lo = read_register(&reg->channel_int_request);
-	dbg_io("ioread32(0x%p) returned 0x%08x (channel_int_request)\n",
-	       &reg->channel_int_request, lo);
-
-	/* return interrupts: user in upper 16-bits, channel in lower 16-bits */
-	return build_u32(hi, lo);
-}
-
 /// alloc a dummpy xdma_dev device
 static struct xdma_dev *alloc_dev_instance(struct pci_dev *pdev)
 {
-	int i;
 	struct xdma_dev *xdev;
-	struct xdma_engine *engine;
 
 	if (!pdev) {
 		pr_err("Invalid pdev\n");
@@ -88,33 +53,7 @@ static struct xdma_dev *alloc_dev_instance(struct pci_dev *pdev)
 	xdev->pdev = pdev;
 	dbg_init("xdev = 0x%p\n", xdev);
 
-	engine = xdev->engine_h2c;
-	for (i = 0; i < XDMA_CHANNEL_NUM_MAX; i++, engine++) {
-		spin_lock_init(&engine->lock);
-		mutex_init(&engine->desc_lock);
-		INIT_LIST_HEAD(&engine->transfer_list);
-#if HAS_SWAKE_UP
-		init_swait_queue_head(&engine->shutdown_wq);
-		// init_swait_queue_head(&engine->xdma_perf_wq);
-#else
-		init_waitqueue_head(&engine->shutdown_wq);
-		init_waitqueue_head(&engine->xdma_perf_wq);
-#endif
-	}
-
-	engine = xdev->engine_c2h;
-	for (i = 0; i < XDMA_CHANNEL_NUM_MAX; i++, engine++) {
-		spin_lock_init(&engine->lock);
-		mutex_init(&engine->desc_lock);
-		INIT_LIST_HEAD(&engine->transfer_list);
-#if HAS_SWAKE_UP
-		init_swait_queue_head(&engine->shutdown_wq);
-		// init_swait_queue_head(&engine->xdma_perf_wq);
-#else
-		init_waitqueue_head(&engine->shutdown_wq);
-		init_waitqueue_head(&engine->xdma_perf_wq);
-#endif
-	}
+	
 
 	return xdev;
 }
@@ -212,7 +151,7 @@ static int map_single_bar(struct xdma_dev *xdev, struct pci_dev *dev, int idx)
 
 	/* do not map BARs with length 0. Note that start MAY be 0! */
 	if (!bar_len) {
-		//pr_info("BAR #%d is not present - skipping\n", idx);
+		pr_info("BAR #%d is not present - skipping\n", idx);
 		return 0;
 	}
 
@@ -331,8 +270,7 @@ static void pci_enable_capability(struct pci_dev *pdev, int cap)
 	}
 }
 
-void *xdma_device_open(const char *mname, struct pci_dev *pdev, int *user_max,
-		       int *h2c_channel_max, int *c2h_channel_max)
+void *xdma_device_open(const char *mname, struct pci_dev *pdev)
 {
 	struct xdma_dev *xdev = NULL;
 	int rv = 0;
@@ -344,20 +282,8 @@ void *xdma_device_open(const char *mname, struct pci_dev *pdev, int *user_max,
 	if (!xdev)
 		return NULL;
 	xdev->mod_name = mname;
-	xdev->user_max = *user_max;
-	xdev->h2c_channel_max = *h2c_channel_max;
-	xdev->c2h_channel_max = *c2h_channel_max;
 
 	xdma_device_flag_set(xdev, XDEV_FLAG_OFFLINE);
-
-	if (xdev->user_max == 0 || xdev->user_max > MAX_USER_IRQ)
-		xdev->user_max = MAX_USER_IRQ;
-	if (xdev->h2c_channel_max == 0 ||
-	    xdev->h2c_channel_max > XDMA_CHANNEL_NUM_MAX)
-		xdev->h2c_channel_max = XDMA_CHANNEL_NUM_MAX;
-	if (xdev->c2h_channel_max == 0 ||
-	    xdev->c2h_channel_max > XDMA_CHANNEL_NUM_MAX)
-		xdev->c2h_channel_max = XDMA_CHANNEL_NUM_MAX;
 
 	rv = xdev_list_add(xdev);
 	if (rv < 0)
@@ -369,12 +295,9 @@ void *xdma_device_open(const char *mname, struct pci_dev *pdev, int *user_max,
 		goto err_enable;
 	}
 
-	/* keep INTx enabled */
-	pci_check_intr_pend(pdev);
 
 	/* enable relaxed ordering */
     pci_enable_capability(pdev, PCI_EXP_DEVCTL_RELAX_EN);
-
 	pci_enable_capability(pdev, PCI_EXP_DEVCTL_EXT_TAG);
 
 	/* force MRRS to be 512 */
@@ -397,16 +320,6 @@ void *xdma_device_open(const char *mname, struct pci_dev *pdev, int *user_max,
 	rv = set_dma_mask(pdev);
 	if (rv)
 		goto err_mask;
-
-	/* explicitely zero all interrupt enable masks */
-	read_interrupts(xdev);
-
-	/* Flush writes */
-	read_interrupts(xdev);
-
-	*user_max = xdev->user_max;
-	*h2c_channel_max = xdev->h2c_channel_max;
-	*c2h_channel_max = xdev->c2h_channel_max;
 
 	xdma_device_flag_clear(xdev, XDEV_FLAG_OFFLINE);
 	return (void *)xdev;
