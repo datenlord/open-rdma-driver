@@ -8,39 +8,39 @@
 #define DTLD_POOL_H
 
 enum dtld_elem_type {
-	DTLD_TYPE_UC,
-	DTLD_TYPE_PD,
-	DTLD_TYPE_AH,
-	DTLD_TYPE_SRQ,
-	DTLD_TYPE_QP,
-	DTLD_TYPE_CQ,
-	DTLD_TYPE_MR,
-	DTLD_TYPE_MW,
-	DTLD_NUM_TYPES,		/* keep me last */
+    DTLD_TYPE_UC,
+    DTLD_TYPE_PD,
+    DTLD_TYPE_AH,
+    DTLD_TYPE_SRQ,
+    DTLD_TYPE_QP,
+    DTLD_TYPE_CQ,
+    DTLD_TYPE_MR,
+    DTLD_TYPE_MW,
+    DTLD_NUM_TYPES, /* keep me last */
 };
 
 struct dtld_pool_elem {
-	struct dtld_pool		*pool;
-	void			*obj;
-	struct kref		ref_cnt;
-	struct list_head	list;
-	u32			index;
+    struct dtld_pool *pool;
+    void *obj;
+    struct kref ref_cnt;
+    struct list_head list;
+    u32 index;
 };
 
 struct dtld_pool {
-	struct dtld_dev		*dtld;
-	const char		*name;
-	void			(*cleanup)(struct dtld_pool_elem *elem);
-	enum dtld_elem_type	type;
+    struct dtld_dev *dtld;
+    const char *name;
+    void (*cleanup)(struct dtld_pool_elem *elem);
+    enum dtld_elem_type type;
 
-	unsigned int		max_elem;
-	atomic_t		num_elem;
-	size_t			elem_size;
-	size_t			elem_offset;
+    unsigned int max_elem;
+    atomic_t num_elem;
+    size_t elem_size;
+    size_t elem_offset;
 
-	struct xarray		xa;
-	struct xa_limit		limit;
-	u32			next;
+    struct xarray xa;
+    struct xa_limit limit;
+    u32 next;
 };
 
 /* initialize a pool of objects with given limit on
@@ -48,7 +48,7 @@ struct dtld_pool {
  * pool elements will be allocated out of a slab cache
  */
 void dtld_pool_init(struct dtld_dev *dtld, struct dtld_pool *pool,
-		  enum dtld_elem_type type);
+		    enum dtld_elem_type type);
 
 /* free resources from object pool */
 void dtld_pool_cleanup(struct dtld_pool *pool);

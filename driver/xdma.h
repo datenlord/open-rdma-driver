@@ -8,18 +8,17 @@
 
 struct xdma_pci_dev;
 
-
 /* XDMA PCIe device specific book-keeping */
 struct xdma_pci_dev {
-	unsigned long magic;		/* structure ID for sanity checks */
-	struct pci_dev *pdev;	/* pci device struct from probe() */
-	struct xdma_dev *xdev;
-	int major;		/* major number */
-	int instance;		/* instance number */
+    unsigned long magic; /* structure ID for sanity checks */
+    struct pci_dev *pdev; /* pci device struct from probe() */
+    struct xdma_dev *xdev;
+    int major; /* major number */
+    int instance; /* instance number */
 
-	unsigned int flags;
+    unsigned int flags;
 
-	void *data;
+    void *data;
 };
 
 struct xdma_pci_dev *xpdev_alloc(struct pci_dev *pdev);

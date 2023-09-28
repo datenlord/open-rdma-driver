@@ -14,6 +14,6 @@
 #include "dtld_verbs.h"
 #include "dtld_loc.h"
 
-#define DTLD_UVERBS_ABI_VERSION		2
+#define DTLD_UVERBS_ABI_VERSION 2
 
 #endif
