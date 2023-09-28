@@ -174,17 +174,6 @@ struct dtld_map {
 	struct dtld_phys_buf	buf[DTLD_BUF_PER_MAP];
 };
 
-struct dtld_map_set {
-	struct dtld_map		**map;
-	u64			va;
-	u64			iova;
-	size_t		length;
-	u32			offset;
-	u32			nbuf;
-	int			page_shift;
-	int			page_mask;
-};
-
 enum dtld_mr_state {
 	DTLD_MR_STATE_INVALID,
 	DTLD_MR_STATE_FREE,
@@ -204,19 +193,6 @@ struct dtld_mr {
 	int			access;
 
 	struct xarray	*page_table;
-
-	// int			map_shift;
-	// int			map_mask;
-
-	// u32			num_buf;
-
-	// u32			max_buf;
-	// u32			num_map;
-
-	// atomic_t		num_mw;
-
-	// struct dtld_map_set	*cur_map_set;
-	// struct dtld_map_set	*next_map_set;
 };
 
 static inline struct dtld_ucontext *to_dtld_uc(struct ib_ucontext *uc)

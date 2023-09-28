@@ -1,6 +1,7 @@
 #ifndef LIBXDMA_H
 #define LIBXDMA_H
 
+#include "dtld_verbs.h"
 #include <linux/version.h>
 #include <linux/types.h>
 #include <linux/spinlock_types.h>
@@ -19,7 +20,10 @@
 
 
 #define XDMA_CHANNEL_NUM_MAX (4)
-#define XDMA_BAR_NUM (6)
+#define XDMA_BAR_NUM (2)
+#define XDMA_CONFIG_BAR_IDX (0)
+#define RDMA_CONFIG_BAR_IDX (1)
+
 #define MAGIC_DEVICE	0xDDDDDDDDUL
 #define MAX_USER_IRQ 16
 #define XDMA_BAR_SIZE (0x8000UL)
@@ -183,6 +187,7 @@ struct xdma_dev {
 
 	unsigned long magic;		/* structure ID for sanity checks */
 	struct pci_dev *pdev;	/* pci device struct from probe() */
+	struct dtld_dev *dtld;
 	int idx;		/* dev index */
 
 	const char *mod_name;		/* name of module owning the dev */
@@ -192,9 +197,6 @@ struct xdma_dev {
 
 	/* PCIe BAR management */
 	void __iomem *bar[XDMA_BAR_NUM];	/* addresses for mapped BARs */
-	int user_bar_idx;	/* BAR index of user logic */
-	int config_bar_idx;	/* BAR index of XDMA config logic */
-	int bypass_bar_idx;	/* BAR index of XDMA bypass logic */
 	int regions_in_use;	/* flag if dev was in use during probe() */
 	int got_regions;	/* flag if probe() obtained the regions */
 
@@ -220,6 +222,7 @@ static inline void xdma_device_flag_clear(struct xdma_dev *xdev, unsigned int f)
 
 struct xdma_dev *xdev_find_by_pdev(struct pci_dev *pdev);
 
-void *xdma_device_open(const char *mname, struct pci_dev *pdev) __attribute__((used));
+void *xdma_device_open(const char *mname, struct pci_dev *pdev);
+void xdma_device_close(struct pci_dev *pdev, void *dev_hndl);
 
 #endif

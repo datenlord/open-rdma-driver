@@ -59,8 +59,6 @@ err1:
 int dtld_qp_chk_init(struct dtld_dev *dtld, struct ib_qp_init_attr *init)
 {
 	struct ib_qp_cap *cap = &init->cap;
-	struct dtld_port *port;
-	int port_num = init->port_num;
 
 	switch (init->qp_type) {
 	case IB_QPT_RC:
@@ -129,7 +127,7 @@ static int dtld_qp_init_send(struct dtld_dev *dtld, struct dtld_qp *qp,
 		return -ENOMEM;
 	qp->sq.ummap_ent = ummap_ent;
 
-	ummap_ent->address = pci_resource_start(dtld->xdev->pdev, dtld->xdev->bypass_bar_idx);
+	ummap_ent->address = pci_resource_start(dtld->xdev->pdev, RDMA_CONFIG_BAR_IDX);
 
 	err = rdma_user_mmap_entry_insert(&ctx->ibuc, &ummap_ent->rdma_entry, PAGE_SIZE);
 	if (err) {
@@ -186,7 +184,7 @@ static int dtld_qp_init_recv(struct dtld_dev *dtld, struct dtld_qp *qp,
 			return -ENOMEM;
 		qp->rq.ummap_ent = ummap_ent;
 
-		ummap_ent->address = pci_resource_start(dtld->xdev->pdev, dtld->xdev->bypass_bar_idx);
+		ummap_ent->address = pci_resource_start(dtld->xdev->pdev, RDMA_CONFIG_BAR_IDX);
 
 		err = rdma_user_mmap_entry_insert(&ctx->ibuc, &ummap_ent->rdma_entry, PAGE_SIZE);
 		if (err) {

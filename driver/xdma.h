@@ -23,6 +23,7 @@ struct xdma_pci_dev {
 };
 
 struct xdma_pci_dev *xpdev_alloc(struct pci_dev *pdev);
+void xpdev_free(struct xdma_pci_dev *xpdev);
 void *xdma_device_open(const char *mname, struct pci_dev *pdev);
 
 #endif

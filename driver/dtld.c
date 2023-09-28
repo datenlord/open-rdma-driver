@@ -1,6 +1,7 @@
 #include <rdma/rdma_netlink.h>
 #include <net/addrconf.h>
 #include <linux/pci.h>
+#include "linux/container_of.h"
 #include "xdma.h"
 #include "dtld.h"
 
@@ -69,30 +70,31 @@ static void dtld_init_pools(struct dtld_dev *dtld)
 /* initialize port attributes */
 static void dtld_init_port_param(struct dtld_port *port)
 {
-	port->attr.state		= IB_PORT_DOWN;
-	port->attr.max_mtu		= IB_MTU_4096;
-	port->attr.active_mtu		= IB_MTU_256;
-	port->attr.gid_tbl_len		= DTLD_PORT_GID_TBL_LEN;
-	port->attr.port_cap_flags	= DTLD_PORT_PORT_CAP_FLAGS;
-	port->attr.max_msg_sz		= DTLD_PORT_MAX_MSG_SZ;
-	port->attr.bad_pkey_cntr	= DTLD_PORT_BAD_PKEY_CNTR;
-	port->attr.qkey_viol_cntr	= DTLD_PORT_QKEY_VIOL_CNTR;
-	port->attr.pkey_tbl_len		= DTLD_PORT_PKEY_TBL_LEN;
-	port->attr.lid			= DTLD_PORT_LID;
-	port->attr.sm_lid		= DTLD_PORT_SM_LID;
-	port->attr.lmc			= DTLD_PORT_LMC;
-	port->attr.max_vl_num		= DTLD_PORT_MAX_VL_NUM;
-	port->attr.sm_sl		= DTLD_PORT_SM_SL;
-	port->attr.subnet_timeout	= DTLD_PORT_SUBNET_TIMEOUT;
-	port->attr.init_type_reply	= DTLD_PORT_INIT_TYPE_REPLY;
-	port->attr.active_width		= DTLD_PORT_ACTIVE_WIDTH;
-	port->attr.active_speed		= DTLD_PORT_ACTIVE_SPEED;
-	port->attr.phys_state		= DTLD_PORT_PHYS_STATE;
-	port->mtu_cap			= ib_mtu_enum_to_int(IB_MTU_256);
-	port->subnet_prefix		= cpu_to_be64(DTLD_PORT_SUBNET_PREFIX);
+	// TODO: change these attrs according to real hardware
+	
+	// port->attr.state		= IB_PORT_DOWN;
+	// port->attr.max_mtu		= IB_MTU_4096;
+	// port->attr.active_mtu		= IB_MTU_256;
+	// port->attr.gid_tbl_len		= DTLD_PORT_GID_TBL_LEN;
+	// port->attr.port_cap_flags	= DTLD_PORT_PORT_CAP_FLAGS;
+	// port->attr.max_msg_sz		= DTLD_PORT_MAX_MSG_SZ;
+	// port->attr.bad_pkey_cntr	= DTLD_PORT_BAD_PKEY_CNTR;
+	// port->attr.qkey_viol_cntr	= DTLD_PORT_QKEY_VIOL_CNTR;
+	// port->attr.pkey_tbl_len		= DTLD_PORT_PKEY_TBL_LEN;
+	// port->attr.lid			= DTLD_PORT_LID;
+	// port->attr.sm_lid		= DTLD_PORT_SM_LID;
+	// port->attr.lmc			= DTLD_PORT_LMC;
+	// port->attr.max_vl_num		= DTLD_PORT_MAX_VL_NUM;
+	// port->attr.sm_sl		= DTLD_PORT_SM_SL;
+	// port->attr.subnet_timeout	= DTLD_PORT_SUBNET_TIMEOUT;
+	// port->attr.init_type_reply	= DTLD_PORT_INIT_TYPE_REPLY;
+	// port->attr.active_width		= DTLD_PORT_ACTIVE_WIDTH;
+	// port->attr.active_speed		= DTLD_PORT_ACTIVE_SPEED;
+	// port->attr.phys_state		= DTLD_PORT_PHYS_STATE;
+	// port->mtu_cap			= ib_mtu_enum_to_int(IB_MTU_256);
+	// port->subnet_prefix		= cpu_to_be64(DTLD_PORT_SUBNET_PREFIX);
 }
 
-static void dtld_init_ports(struct dtld_dev *dtld) __attribute__((used));
 static void dtld_init_ports(struct dtld_dev *dtld)
 {
 	struct dtld_port *port = &dtld->port;
@@ -103,19 +105,6 @@ static void dtld_init_ports(struct dtld_dev *dtld)
 	spin_lock_init(&port->port_lock);
 }
 
-void dtld_set_mtu(struct dtld_dev *dtld, unsigned int ndev_mtu)
-{
-	struct dtld_port *port = &dtld->port;
-	enum ib_mtu mtu;
-
-	mtu = eth_mtu_int_to_enum(ndev_mtu);
-
-	/* Make sure that new MTU in range */
-	mtu = mtu ? min_t(enum ib_mtu, mtu, IB_MTU_4096) : IB_MTU_256;
-
-	port->attr.active_mtu = mtu;
-	port->mtu_cap = ib_mtu_enum_to_int(mtu);
-}
 
 static int dtld_dev_init_xdma(struct pci_dev *pdev, const struct pci_device_id *id, struct xdma_dev **xdev)
 {
@@ -123,6 +112,9 @@ static int dtld_dev_init_xdma(struct pci_dev *pdev, const struct pci_device_id *
 	struct xdma_pci_dev *xpdev = NULL;
 	void *hndl;
 	pr_info("dtld probe one");
+
+	// TODO: why not move xpdev alloc into `xdma_device_open` and make it an atomic one?
+	// and why multi xdev may bind to the same pdev? I think we should refactor it soon.
 	xpdev = xpdev_alloc(pdev);
 	if (!xpdev)
 		return -ENOMEM;
@@ -132,7 +124,6 @@ static int dtld_dev_init_xdma(struct pci_dev *pdev, const struct pci_device_id *
 		rv = -EINVAL;
 		goto err_out;
 	}
-
 
 	/* make sure no duplicate */
 	*xdev = xdev_find_by_pdev(pdev);
@@ -144,6 +135,7 @@ static int dtld_dev_init_xdma(struct pci_dev *pdev, const struct pci_device_id *
 
 	if (hndl != *xdev) {
 		pr_err("xdev handle mismatch\n");
+		kfree(hndl);
 		rv =  -EINVAL;
 		goto err_out;
 	}
@@ -154,7 +146,7 @@ static int dtld_dev_init_xdma(struct pci_dev *pdev, const struct pci_device_id *
 	return 0;
 
 err_out:
-	// TODO: release
+	xpdev_free(xpdev);
 	return rv;
 }
 
@@ -167,10 +159,12 @@ static int dtld_dev_init_rdma(struct xdma_dev *xdev)
 	dtld = ib_alloc_device(dtld_dev, ib_dev);
 
 	dtld->xdev = xdev;
+	xdev->dtld = dtld;
 
 	dtld_init_pools(dtld);
 
 	dtld_init_device_param(dtld);
+	dtld_init_ports(dtld);
 
 	err = dtld_register_device(dtld, "dtld-dev");
 
@@ -179,7 +173,7 @@ static int dtld_dev_init_rdma(struct xdma_dev *xdev)
 		ib_dealloc_device(&dtld->ib_dev);
 	}
 
-	return 0;
+	return err;
 }
 
 static int probe_one(struct pci_dev *pdev, const struct pci_device_id *id)
@@ -198,10 +192,29 @@ static int probe_one(struct pci_dev *pdev, const struct pci_device_id *id)
 	return 0;
 }
 
+static void remove_one(struct pci_dev *pdev)
+{
+	struct xdma_pci_dev *xpdev;
+
+	if (!pdev)
+		return;
+
+	xpdev = dev_get_drvdata(&pdev->dev);
+	if (!xpdev)
+		return;
+	
+	dtld_unregister_device(xpdev->xdev->dtld);
+	
+
+	xpdev_free(xpdev);
+	dev_set_drvdata(&pdev->dev, NULL);
+}
+
 static struct pci_driver pci_driver = {
 	.name = "dtld",
 	.id_table = pci_ids,
 	.probe = probe_one,
+	.remove = remove_one,
 };
 
 static int __init dtld_ib_init(void)
@@ -211,7 +224,7 @@ static int __init dtld_ib_init(void)
 
 static void __exit dtld_ib_cleanup(void)
 {
-	// TODO: our device is not hot-plug capable, so it can't do any useful things here.
+	pci_unregister_driver(&pci_driver);
 }
 
 module_init(dtld_ib_init);

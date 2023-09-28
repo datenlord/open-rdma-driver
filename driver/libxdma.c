@@ -45,15 +45,10 @@ static struct xdma_dev *alloc_dev_instance(struct pci_dev *pdev)
 	spin_lock_init(&xdev->lock);
 
 	xdev->magic = MAGIC_DEVICE;
-	xdev->config_bar_idx = 0;
-	xdev->user_bar_idx = -1;
-	xdev->bypass_bar_idx = 1;
 
 	/* create a driver to device reference */
 	xdev->pdev = pdev;
 	dbg_init("xdev = 0x%p\n", xdev);
-
-	
 
 	return xdev;
 }
@@ -213,17 +208,17 @@ static int map_bars(struct xdma_dev *xdev, struct pci_dev *dev)
 	int rv = -EINVAL;
 
 	// map config bar
-	if (map_single_bar(xdev, dev, xdev->config_bar_idx) == 0) {
+	if (map_single_bar(xdev, dev, XDMA_CONFIG_BAR_IDX) == 0) {
 		goto fail;
 	}
 
 	// map pcie bridge logic bar
-	if (map_single_bar(xdev, dev, xdev->bypass_bar_idx) == 0) {
+	if (map_single_bar(xdev, dev, RDMA_CONFIG_BAR_IDX) == 0) {
 		goto fail;
 	}
 
 	// check if xdma config bar exist
-	if (!is_config_bar(xdev, xdev->config_bar_idx)) {
+	if (!is_config_bar(xdev, XDMA_CONFIG_BAR_IDX)) {
 		goto fail;
 	}
 
@@ -234,6 +229,18 @@ fail:
 	/* unwind; unmap any BARs that we did map */
 	// TODO: unmap_bars(xdev, dev);
 	return rv;
+}
+
+/*
+ * Unmap the BAR regions that had been mapped earlier using map_bars()
+ */
+static void unmap_bars(struct xdma_dev *xdev, struct pci_dev *dev)
+{
+	pci_iounmap(dev, xdev->bar[XDMA_CONFIG_BAR_IDX]);
+	xdev->bar[XDMA_CONFIG_BAR_IDX] = NULL;
+
+	pci_iounmap(dev, xdev->bar[RDMA_CONFIG_BAR_IDX]);
+	xdev->bar[RDMA_CONFIG_BAR_IDX] = NULL;
 }
 
 static int set_dma_mask(struct pci_dev *pdev)
@@ -325,8 +332,7 @@ void *xdma_device_open(const char *mname, struct pci_dev *pdev)
 	return (void *)xdev;
 
 err_mask:
-	// remove_engines(xdev);
-	// unmap_bars(xdev, pdev);
+	unmap_bars(xdev, pdev);
 err_map:
 	if (xdev->got_regions)
 		pci_release_regions(pdev);
@@ -334,8 +340,40 @@ err_regions:
 	if (!xdev->regions_in_use)
 		pci_disable_device(pdev);
 err_enable:
-	// xdev_list_remove(xdev);
+	xdev_list_remove(xdev);
 free_xdev:
 	kfree(xdev);
 	return NULL;
+}
+
+void xdma_device_close(struct pci_dev *pdev, void *dev_hndl)
+{
+	struct xdma_dev *xdev = (struct xdma_dev *)dev_hndl;
+
+	if (!dev_hndl)
+		return;
+
+	dbg_sg("remove(dev = 0x%p) where pdev->dev.driver_data = 0x%p\n", pdev,
+	       xdev);
+	if (xdev->pdev != pdev) {
+		dbg_sg("pci_dev(0x%lx) != pdev(0x%lx)\n",
+		       (unsigned long)xdev->pdev, (unsigned long)pdev);
+	}
+
+
+	unmap_bars(xdev, pdev);
+
+	if (xdev->got_regions) {
+		dbg_init("pci_release_regions 0x%p.\n", pdev);
+		pci_release_regions(pdev);
+	}
+
+	if (!xdev->regions_in_use) {
+		dbg_init("pci_disable_device 0x%p.\n", pdev);
+		pci_disable_device(pdev);
+	}
+
+	xdev_list_remove(xdev);
+
+	kfree(xdev);
 }

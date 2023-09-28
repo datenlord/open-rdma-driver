@@ -57,7 +57,7 @@ int dtld_cq_from_init(struct dtld_dev *dtld, struct dtld_cq *cq, int cqe,
 		return -ENOMEM;
 	cq->ummap_ent = ummap_ent;
 
-	ummap_ent->address = pci_resource_start(dtld->xdev->pdev, dtld->xdev->bypass_bar_idx);
+	ummap_ent->address = pci_resource_start(dtld->xdev->pdev, RDMA_CONFIG_BAR_IDX);
 
 	err = rdma_user_mmap_entry_insert(&ctx->ibuc, &ummap_ent->rdma_entry, PAGE_SIZE);
 	if (err) {

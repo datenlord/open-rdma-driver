@@ -81,17 +81,6 @@ static int dtld_mr_init(struct dtld_mr *mr, struct ib_umem *umem, u64 length, u6
 	return 0;
 }
 
-static void dtld_mr_free_map_set(int num_map, struct dtld_map_set *set)
-{
-	int i;
-
-	for (i = 0; i < num_map; i++)
-		kfree(set->map[i]);
-
-	kfree(set->map);
-	kfree(set);
-}
-
 
 int dtld_mr_init_user(struct dtld_pd *pd, u64 start, u64 length, u64 iova,
 		     int access, struct dtld_mr *mr)
