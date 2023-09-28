@@ -342,16 +342,15 @@ static struct ib_mr *dtld_reg_user_mr(struct ib_pd *ibpd,
 				     int access, struct ib_udata *udata)
 {
 	int err;
-	struct dtld_dev *rxe = dtld_from_ibdev(ibpd->device);
+	struct dtld_dev *dtld = dtld_from_ibdev(ibpd->device);
 	struct dtld_pd *pd = to_dtld_pd(ibpd);
 	struct dtld_mr *mr;
 
-	mr = dtld_alloc(&rxe->mr_pool);
+	mr = dtld_alloc(&dtld->mr_pool);
 	if (!mr) {
 		err = -ENOMEM;
 		goto err2;
 	}
-
 
 	dtld_get(pd);
 
