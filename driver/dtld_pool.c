@@ -95,7 +95,7 @@ static const struct dtld_type_info {
 };
 
 void dtld_pool_init(struct dtld_dev *dtld, struct dtld_pool *pool,
-		    enum dtld_elem_type type)
+                    enum dtld_elem_type type)
 {
     const struct dtld_type_info *info = &dtld_type_info[type];
 
@@ -128,14 +128,14 @@ void *dtld_alloc(struct dtld_pool *pool)
     int err;
 
     if (WARN_ON(!(pool->type == DTLD_TYPE_MR)))
-	return NULL;
+        return NULL;
 
     if (atomic_inc_return(&pool->num_elem) > pool->max_elem)
-	goto err_cnt;
+        goto err_cnt;
 
     obj = kzalloc(pool->elem_size, GFP_KERNEL);
     if (!obj)
-	goto err_cnt;
+        goto err_cnt;
 
     elem = (struct dtld_pool_elem *)((u8 *)obj + pool->elem_offset);
 
@@ -144,9 +144,9 @@ void *dtld_alloc(struct dtld_pool *pool)
     kref_init(&elem->ref_cnt);
 
     err = xa_alloc_cyclic(&pool->xa, &elem->index, elem, pool->limit,
-			  &pool->next, GFP_KERNEL);
+                          &pool->next, GFP_KERNEL);
     if (err)
-	goto err_free;
+        goto err_free;
 
     return obj;
 
@@ -162,19 +162,19 @@ int __dtld_add_to_pool(struct dtld_pool *pool, struct dtld_pool_elem *elem)
     int err;
 
     if (WARN_ON(pool->type == DTLD_TYPE_MR))
-	return -EINVAL;
+        return -EINVAL;
 
     if (atomic_inc_return(&pool->num_elem) > pool->max_elem)
-	goto err_cnt;
+        goto err_cnt;
 
     elem->pool = pool;
     elem->obj = (u8 *)elem - pool->elem_offset;
     kref_init(&elem->ref_cnt);
 
     err = xa_alloc_cyclic(&pool->xa, &elem->index, elem, pool->limit,
-			  &pool->next, GFP_KERNEL);
+                          &pool->next, GFP_KERNEL);
     if (err)
-	goto err_cnt;
+        goto err_cnt;
 
     return 0;
 
@@ -193,9 +193,9 @@ void *dtld_pool_get_index(struct dtld_pool *pool, u32 index)
     xa_lock_irqsave(xa, flags);
     elem = xa_load(xa, index);
     if (elem && kref_get_unless_zero(&elem->ref_cnt))
-	obj = elem->obj;
+        obj = elem->obj;
     else
-	obj = NULL;
+        obj = NULL;
     xa_unlock_irqrestore(xa, flags);
 
     return obj;
@@ -209,10 +209,10 @@ static void dtld_elem_release(struct kref *kref)
     xa_erase(&pool->xa, elem->index);
 
     if (pool->cleanup)
-	pool->cleanup(elem);
+        pool->cleanup(elem);
 
     if (pool->type == DTLD_TYPE_MR)
-	kfree(elem->obj);
+        kfree(elem->obj);
 
     atomic_dec(&pool->num_elem);
 }

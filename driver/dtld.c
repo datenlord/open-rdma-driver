@@ -5,18 +5,17 @@
 #include "xdma.h"
 #include "dtld.h"
 
-MODULE_AUTHOR("Eli Cohen <eli@mellanox.com>");
-MODULE_DESCRIPTION(
-	"Mellanox 5th generation network adapters (ConnectX series) IB driver");
-MODULE_LICENSE("Dual BSD/GPL");
+MODULE_AUTHOR("Datenlord <rdma-driver@datenlord.com>");
+MODULE_DESCRIPTION("Datenlord RDMA driver");
+MODULE_LICENSE("GPL");
 
 static const struct pci_device_id pci_ids[] = { {
-							PCI_DEVICE(0x10ee,
-								   0x903f),
-						}, // XDMA
-						{
-							0,
-						} };
+                                                        PCI_DEVICE(0x10ee,
+                                                                   0x903f),
+                                                }, // XDMA
+                                                {
+                                                        0,
+                                                } };
 
 MODULE_DEVICE_TABLE(pci, pci_ids);
 
@@ -53,9 +52,9 @@ static void dtld_init_device_param(struct dtld_dev *dtld)
     dtld->attr.max_pkeys = DTLD_MAX_PKEYS;
     dtld->attr.local_ca_ack_delay = DTLD_LOCAL_CA_ACK_DELAY;
     // addrconf_addr_eui48((unsigned char *)&dtld->attr.sys_image_guid,
-    // 		dtld->ndev->dev_addr);
+    //         dtld->ndev->dev_addr);
 
-    // dtld->max_ucontext			= DTLD_MAX_UCONTEXT;
+    // dtld->max_ucontext            = DTLD_MAX_UCONTEXT;
 }
 
 /* init pools of managed objects */
@@ -76,27 +75,27 @@ static void dtld_init_port_param(struct dtld_port *port)
 {
     // TODO: change these attrs according to real hardware
 
-    // port->attr.state		= IB_PORT_DOWN;
-    // port->attr.max_mtu		= IB_MTU_4096;
-    // port->attr.active_mtu		= IB_MTU_256;
-    // port->attr.gid_tbl_len		= DTLD_PORT_GID_TBL_LEN;
-    // port->attr.port_cap_flags	= DTLD_PORT_PORT_CAP_FLAGS;
-    // port->attr.max_msg_sz		= DTLD_PORT_MAX_MSG_SZ;
-    // port->attr.bad_pkey_cntr	= DTLD_PORT_BAD_PKEY_CNTR;
-    // port->attr.qkey_viol_cntr	= DTLD_PORT_QKEY_VIOL_CNTR;
-    // port->attr.pkey_tbl_len		= DTLD_PORT_PKEY_TBL_LEN;
-    // port->attr.lid			= DTLD_PORT_LID;
-    // port->attr.sm_lid		= DTLD_PORT_SM_LID;
-    // port->attr.lmc			= DTLD_PORT_LMC;
-    // port->attr.max_vl_num		= DTLD_PORT_MAX_VL_NUM;
-    // port->attr.sm_sl		= DTLD_PORT_SM_SL;
-    // port->attr.subnet_timeout	= DTLD_PORT_SUBNET_TIMEOUT;
-    // port->attr.init_type_reply	= DTLD_PORT_INIT_TYPE_REPLY;
-    // port->attr.active_width		= DTLD_PORT_ACTIVE_WIDTH;
-    // port->attr.active_speed		= DTLD_PORT_ACTIVE_SPEED;
-    // port->attr.phys_state		= DTLD_PORT_PHYS_STATE;
-    // port->mtu_cap			= ib_mtu_enum_to_int(IB_MTU_256);
-    // port->subnet_prefix		= cpu_to_be64(DTLD_PORT_SUBNET_PREFIX);
+    // port->attr.state        = IB_PORT_DOWN;
+    // port->attr.max_mtu        = IB_MTU_4096;
+    // port->attr.active_mtu        = IB_MTU_256;
+    // port->attr.gid_tbl_len        = DTLD_PORT_GID_TBL_LEN;
+    // port->attr.port_cap_flags    = DTLD_PORT_PORT_CAP_FLAGS;
+    // port->attr.max_msg_sz        = DTLD_PORT_MAX_MSG_SZ;
+    // port->attr.bad_pkey_cntr    = DTLD_PORT_BAD_PKEY_CNTR;
+    // port->attr.qkey_viol_cntr    = DTLD_PORT_QKEY_VIOL_CNTR;
+    // port->attr.pkey_tbl_len        = DTLD_PORT_PKEY_TBL_LEN;
+    // port->attr.lid            = DTLD_PORT_LID;
+    // port->attr.sm_lid        = DTLD_PORT_SM_LID;
+    // port->attr.lmc            = DTLD_PORT_LMC;
+    // port->attr.max_vl_num        = DTLD_PORT_MAX_VL_NUM;
+    // port->attr.sm_sl        = DTLD_PORT_SM_SL;
+    // port->attr.subnet_timeout    = DTLD_PORT_SUBNET_TIMEOUT;
+    // port->attr.init_type_reply    = DTLD_PORT_INIT_TYPE_REPLY;
+    // port->attr.active_width        = DTLD_PORT_ACTIVE_WIDTH;
+    // port->attr.active_speed        = DTLD_PORT_ACTIVE_SPEED;
+    // port->attr.phys_state        = DTLD_PORT_PHYS_STATE;
+    // port->mtu_cap            = ib_mtu_enum_to_int(IB_MTU_256);
+    // port->subnet_prefix        = cpu_to_be64(DTLD_PORT_SUBNET_PREFIX);
 }
 
 static void dtld_init_ports(struct dtld_dev *dtld)
@@ -105,44 +104,43 @@ static void dtld_init_ports(struct dtld_dev *dtld)
 
     dtld_init_port_param(port);
     // addrconf_addr_eui48((unsigned char *)&port->port_guid,
-    // 		    dtld->ndev->dev_addr);
+    //             dtld->ndev->dev_addr);
     spin_lock_init(&port->port_lock);
 }
 
 static int dtld_dev_init_xdma(struct pci_dev *pdev,
-			      const struct pci_device_id *id,
-			      struct xdma_dev **xdev)
+                              const struct pci_device_id *id,
+                              struct xdma_dev **xdev)
 {
     int rv = 0;
     struct xdma_pci_dev *xpdev = NULL;
     void *hndl;
-    pr_info("dtld probe one");
 
     // TODO: why not move xpdev alloc into `xdma_device_open` and make it an atomic one?
     // and why multi xdev may bind to the same pdev? I think we should refactor it soon.
     xpdev = xpdev_alloc(pdev);
     if (!xpdev)
-	return -ENOMEM;
+        return -ENOMEM;
 
     hndl = xdma_device_open("xdma", pdev);
     if (!hndl) {
-	rv = -EINVAL;
-	goto err_out;
+        rv = -EINVAL;
+        goto err_out;
     }
 
     /* make sure no duplicate */
     *xdev = xdev_find_by_pdev(pdev);
     if (!*xdev) {
-	pr_warn("NO xdev found!\n");
-	rv = -EINVAL;
-	goto err_out;
+        pr_warn("NO xdev found!\n");
+        rv = -EINVAL;
+        goto err_out;
     }
 
     if (hndl != *xdev) {
-	pr_err("xdev handle mismatch\n");
-	kfree(hndl);
-	rv = -EINVAL;
-	goto err_out;
+        pr_err("xdev handle mismatch\n");
+        kfree(hndl);
+        rv = -EINVAL;
+        goto err_out;
     }
 
     xpdev->xdev = hndl;
@@ -174,8 +172,8 @@ static int dtld_dev_init_rdma(struct xdma_dev *xdev)
     err = dtld_register_device(dtld, "dtld-dev");
 
     if (err) {
-	pr_warn("%s failed with error %d\n", __func__, err);
-	ib_dealloc_device(&dtld->ib_dev);
+        pr_warn("%s failed with error %d\n", __func__, err);
+        ib_dealloc_device(&dtld->ib_dev);
     }
 
     return err;
@@ -185,14 +183,21 @@ static int probe_one(struct pci_dev *pdev, const struct pci_device_id *id)
 {
     int err;
     struct xdma_dev *xdev = NULL;
+    struct xdma_pci_dev *xpdev = NULL;
+
+    pr_info("dtld driver probe success");
 
     err = dtld_dev_init_xdma(pdev, id, &xdev);
     if (err)
-	return err;
+        return err;
 
     err = dtld_dev_init_rdma(xdev);
-    if (err)
-	return err;
+    if (err) {
+        xpdev = dev_get_drvdata(&pdev->dev);
+        if (xpdev)
+            xpdev_free(xpdev);
+        return err;
+    }
 
     return 0;
 }
@@ -202,11 +207,11 @@ static void remove_one(struct pci_dev *pdev)
     struct xdma_pci_dev *xpdev;
 
     if (!pdev)
-	return;
+        return;
 
     xpdev = dev_get_drvdata(&pdev->dev);
     if (!xpdev)
-	return;
+        return;
 
     dtld_unregister_device(xpdev->xdev->dtld);
 

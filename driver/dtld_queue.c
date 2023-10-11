@@ -15,7 +15,7 @@ inline void dtld_queue_reset(struct dtld_queue *q)
 }
 
 struct dtld_queue *dtld_queue_init(struct dtld_dev *dtld, int *num_elem,
-				   unsigned int elem_size, enum queue_type type)
+                                   unsigned int elem_size, enum queue_type type)
 {
     // TODO: should communicate with HW and create the queue
     return NULL;

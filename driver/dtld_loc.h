@@ -23,11 +23,11 @@
 
 /* dtld_cq.c */
 int dtld_cq_chk_attr(struct dtld_dev *dtld, struct dtld_cq *cq, int cqe,
-		     int comp_vector);
+                     int comp_vector);
 
 int dtld_cq_from_init(struct dtld_dev *dtld, struct dtld_cq *cq, int cqe,
-		      int comp_vector, struct ib_udata *udata,
-		      struct dtld_uresp_create_cq *uresp);
+                      int comp_vector, struct ib_udata *udata,
+                      struct dtld_uresp_create_cq *uresp);
 
 // int dtld_cq_resize_queue(struct dtld_cq *cq, int new_cqe,
 // 			struct dtld_resize_cq_resp __user *uresp,
@@ -64,7 +64,7 @@ struct dtld_mmap_info {
 // u8 dtld_get_next_key(u32 last_key);
 // void dtld_mr_init_dma(struct dtld_pd *pd, int access, struct dtld_mr *mr);
 int dtld_mr_init_user(struct dtld_pd *pd, u64 start, u64 length, u64 iova,
-		      int access, struct dtld_mr *mr);
+                      int access, struct dtld_mr *mr);
 // int dtld_mr_init_fast(struct dtld_pd *pd, int max_pages, struct dtld_mr *mr);
 // int dtld_mr_copy(struct dtld_mr *mr, u64 iova, void *addr, int length,
 // 		enum dtld_mr_copy_dir dir);
@@ -101,14 +101,14 @@ void dtld_mr_cleanup(struct dtld_pool_elem *elem);
 /* dtld_qp.c */
 int dtld_qp_chk_init(struct dtld_dev *dtld, struct ib_qp_init_attr *init);
 int dtld_qp_from_init(struct dtld_dev *dtld, struct dtld_qp *qp,
-		      struct dtld_pd *pd, struct ib_pd *ibpd,
-		      struct ib_qp_init_attr *init, struct ib_udata *udata,
-		      struct dtld_uresp_create_qp *uresp);
+                      struct dtld_pd *pd, struct ib_pd *ibpd,
+                      struct ib_qp_init_attr *init, struct ib_udata *udata,
+                      struct dtld_uresp_create_qp *uresp);
 int dtld_qp_to_init(struct dtld_qp *qp, struct ib_qp_init_attr *init);
 int dtld_qp_chk_attr(struct dtld_dev *dtld, struct dtld_qp *qp,
-		     struct ib_qp_attr *attr, int mask);
+                     struct ib_qp_attr *attr, int mask);
 int dtld_qp_from_attr(struct dtld_qp *qp, struct ib_qp_attr *attr, int mask,
-		      struct ib_udata *udata);
+                      struct ib_udata *udata);
 int dtld_qp_to_attr(struct dtld_qp *qp, struct ib_qp_attr *attr, int mask);
 // void dtld_qp_error(struct dtld_qp *qp);
 int dtld_qp_chk_destroy(struct dtld_qp *qp);

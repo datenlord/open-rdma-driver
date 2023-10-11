@@ -48,8 +48,8 @@ enum {
 union dtld_gid {
     __u8 raw[16];
     struct {
-	__be64 subnet_prefix;
-	__be64 interface_id;
+        __be64 subnet_prefix;
+        __be64 interface_id;
     } global;
 };
 
@@ -68,8 +68,8 @@ struct dtld_av {
     __u8 dmac[6];
     struct dtld_global_route grh;
     union {
-	struct sockaddr_in _sockaddr_in;
-	struct sockaddr_in6 _sockaddr_in6;
+        struct sockaddr_in _sockaddr_in;
+        struct sockaddr_in6 _sockaddr_in6;
     } sgid_addr, dgid_addr;
 };
 
@@ -79,49 +79,49 @@ struct dtld_send_wr {
     __u32 opcode;
     __u32 send_flags;
     union {
-	__be32 imm_data;
-	__u32 invalidate_rkey;
+        __be32 imm_data;
+        __u32 invalidate_rkey;
     } ex;
     union {
-	struct {
-	    __aligned_u64 remote_addr;
-	    __u32 rkey;
-	    __u32 reserved;
-	} rdma;
-	struct {
-	    __aligned_u64 remote_addr;
-	    __aligned_u64 compare_add;
-	    __aligned_u64 swap;
-	    __u32 rkey;
-	    __u32 reserved;
-	} atomic;
-	struct {
-	    __u32 remote_qpn;
-	    __u32 remote_qkey;
-	    __u16 pkey_index;
-	    __u16 reserved;
-	    __u32 ah_num;
-	    __u32 pad[4];
-	    struct dtld_av av;
-	} ud;
-	struct {
-	    __aligned_u64 addr;
-	    __aligned_u64 length;
-	    __u32 mr_lkey;
-	    __u32 mw_rkey;
-	    __u32 rkey;
-	    __u32 access;
-	} mw;
-	/* reg is only used by the kernel and is not part of the uapi */
+        struct {
+            __aligned_u64 remote_addr;
+            __u32 rkey;
+            __u32 reserved;
+        } rdma;
+        struct {
+            __aligned_u64 remote_addr;
+            __aligned_u64 compare_add;
+            __aligned_u64 swap;
+            __u32 rkey;
+            __u32 reserved;
+        } atomic;
+        struct {
+            __u32 remote_qpn;
+            __u32 remote_qkey;
+            __u16 pkey_index;
+            __u16 reserved;
+            __u32 ah_num;
+            __u32 pad[4];
+            struct dtld_av av;
+        } ud;
+        struct {
+            __aligned_u64 addr;
+            __aligned_u64 length;
+            __u32 mr_lkey;
+            __u32 mw_rkey;
+            __u32 rkey;
+            __u32 access;
+        } mw;
+        /* reg is only used by the kernel and is not part of the uapi */
 #ifdef __KERNEL__
-	struct {
-	    union {
-		struct ib_mr *mr;
-		__aligned_u64 reserved;
-	    };
-	    __u32 key;
-	    __u32 access;
-	} reg;
+        struct {
+            union {
+                struct ib_mr *mr;
+                __aligned_u64 reserved;
+            };
+            __u32 key;
+            __u32 access;
+        } reg;
 #endif
     } wr;
 };
@@ -146,8 +146,8 @@ struct dtld_dma_info {
     __u32 sge_offset;
     __u32 reserved;
     union {
-	__DECLARE_FLEX_ARRAY(__u8, inline_data);
-	__DECLARE_FLEX_ARRAY(struct dtld_sge, sge);
+        __DECLARE_FLEX_ARRAY(__u8, inline_data);
+        __DECLARE_FLEX_ARRAY(struct dtld_sge, sge);
     };
 };
 

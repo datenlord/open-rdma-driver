@@ -71,19 +71,19 @@ struct dtld_queue {
 };
 
 int do_mmap_info(struct dtld_dev *dtld, struct mminfo __user *outbuf,
-		 struct ib_udata *udata, struct dtld_queue_buf *buf,
-		 size_t buf_size, struct dtld_mmap_info **ip_p);
+                 struct ib_udata *udata, struct dtld_queue_buf *buf,
+                 size_t buf_size, struct dtld_mmap_info **ip_p);
 
 void dtld_queue_reset(struct dtld_queue *q);
 
 struct dtld_queue *dtld_queue_init(struct dtld_dev *dtld, int *num_elem,
-				   unsigned int elem_size,
-				   enum queue_type type);
+                                   unsigned int elem_size,
+                                   enum queue_type type);
 
 int dtld_queue_resize(struct dtld_queue *q, unsigned int *num_elem_p,
-		      unsigned int elem_size, struct ib_udata *udata,
-		      struct mminfo __user *outbuf, spinlock_t *producer_lock,
-		      spinlock_t *consumer_lock);
+                      unsigned int elem_size, struct ib_udata *udata,
+                      struct mminfo __user *outbuf, spinlock_t *producer_lock,
+                      spinlock_t *consumer_lock);
 
 void dtld_queue_cleanup(struct dtld_queue *queue);
 
@@ -93,50 +93,50 @@ static inline u32 queue_next_index(struct dtld_queue *q, int index)
 }
 
 static inline u32 queue_get_producer(const struct dtld_queue *q,
-				     enum queue_type type)
+                                     enum queue_type type)
 {
     u32 prod;
 
     switch (type) {
     case QUEUE_TYPE_FROM_CLIENT:
-	/* protect user index */
-	prod = smp_load_acquire(&q->buf->producer_index);
-	break;
+        /* protect user index */
+        prod = smp_load_acquire(&q->buf->producer_index);
+        break;
     case QUEUE_TYPE_TO_CLIENT:
-	prod = q->index;
-	break;
+        prod = q->index;
+        break;
     case QUEUE_TYPE_FROM_DRIVER:
-	/* protect driver index */
-	prod = smp_load_acquire(&q->buf->producer_index);
-	break;
+        /* protect driver index */
+        prod = smp_load_acquire(&q->buf->producer_index);
+        break;
     case QUEUE_TYPE_TO_DRIVER:
-	prod = q->buf->producer_index;
-	break;
+        prod = q->buf->producer_index;
+        break;
     }
 
     return prod;
 }
 
 static inline u32 queue_get_consumer(const struct dtld_queue *q,
-				     enum queue_type type)
+                                     enum queue_type type)
 {
     u32 cons;
 
     switch (type) {
     case QUEUE_TYPE_FROM_CLIENT:
-	cons = q->index;
-	break;
+        cons = q->index;
+        break;
     case QUEUE_TYPE_TO_CLIENT:
-	/* protect user index */
-	cons = smp_load_acquire(&q->buf->consumer_index);
-	break;
+        /* protect user index */
+        cons = smp_load_acquire(&q->buf->consumer_index);
+        break;
     case QUEUE_TYPE_FROM_DRIVER:
-	cons = q->buf->consumer_index;
-	break;
+        cons = q->buf->consumer_index;
+        break;
     case QUEUE_TYPE_TO_DRIVER:
-	/* protect driver index */
-	cons = smp_load_acquire(&q->buf->consumer_index);
-	break;
+        /* protect driver index */
+        cons = smp_load_acquire(&q->buf->consumer_index);
+        break;
     }
 
     return cons;
@@ -167,61 +167,61 @@ static inline u32 queue_count(const struct dtld_queue *q, enum queue_type type)
 }
 
 static inline void queue_advance_producer(struct dtld_queue *q,
-					  enum queue_type type)
+                                          enum queue_type type)
 {
     u32 prod;
 
     switch (type) {
     case QUEUE_TYPE_FROM_CLIENT:
-	pr_warn("%s: attempt to advance client index\n", __func__);
-	break;
+        pr_warn("%s: attempt to advance client index\n", __func__);
+        break;
     case QUEUE_TYPE_TO_CLIENT:
-	prod = q->index;
-	prod = (prod + 1) & q->index_mask;
-	q->index = prod;
-	/* protect user index */
-	smp_store_release(&q->buf->producer_index, prod);
-	break;
+        prod = q->index;
+        prod = (prod + 1) & q->index_mask;
+        q->index = prod;
+        /* protect user index */
+        smp_store_release(&q->buf->producer_index, prod);
+        break;
     case QUEUE_TYPE_FROM_DRIVER:
-	pr_warn("%s: attempt to advance driver index\n", __func__);
-	break;
+        pr_warn("%s: attempt to advance driver index\n", __func__);
+        break;
     case QUEUE_TYPE_TO_DRIVER:
-	prod = q->buf->producer_index;
-	prod = (prod + 1) & q->index_mask;
-	q->buf->producer_index = prod;
-	break;
+        prod = q->buf->producer_index;
+        prod = (prod + 1) & q->index_mask;
+        q->buf->producer_index = prod;
+        break;
     }
 }
 
 static inline void queue_advance_consumer(struct dtld_queue *q,
-					  enum queue_type type)
+                                          enum queue_type type)
 {
     u32 cons;
 
     switch (type) {
     case QUEUE_TYPE_FROM_CLIENT:
-	cons = q->index;
-	cons = (cons + 1) & q->index_mask;
-	q->index = cons;
-	/* protect user index */
-	smp_store_release(&q->buf->consumer_index, cons);
-	break;
+        cons = q->index;
+        cons = (cons + 1) & q->index_mask;
+        q->index = cons;
+        /* protect user index */
+        smp_store_release(&q->buf->consumer_index, cons);
+        break;
     case QUEUE_TYPE_TO_CLIENT:
-	pr_warn("%s: attempt to advance client index\n", __func__);
-	break;
+        pr_warn("%s: attempt to advance client index\n", __func__);
+        break;
     case QUEUE_TYPE_FROM_DRIVER:
-	cons = q->buf->consumer_index;
-	cons = (cons + 1) & q->index_mask;
-	q->buf->consumer_index = cons;
-	break;
+        cons = q->buf->consumer_index;
+        cons = (cons + 1) & q->index_mask;
+        q->buf->consumer_index = cons;
+        break;
     case QUEUE_TYPE_TO_DRIVER:
-	pr_warn("%s: attempt to advance driver index\n", __func__);
-	break;
+        pr_warn("%s: attempt to advance driver index\n", __func__);
+        break;
     }
 }
 
 static inline void *queue_producer_addr(struct dtld_queue *q,
-					enum queue_type type)
+                                        enum queue_type type)
 {
     u32 prod = queue_get_producer(q, type);
 
@@ -229,7 +229,7 @@ static inline void *queue_producer_addr(struct dtld_queue *q,
 }
 
 static inline void *queue_consumer_addr(struct dtld_queue *q,
-					enum queue_type type)
+                                        enum queue_type type)
 {
     u32 cons = queue_get_consumer(q, type);
 
@@ -242,7 +242,7 @@ static inline void *queue_addr_from_index(struct dtld_queue *q, u32 index)
 }
 
 static inline u32 queue_index_from_addr(const struct dtld_queue *q,
-					const void *addr)
+                                        const void *addr)
 {
     return (((u8 *)addr - q->buf->data) >> q->log2_elem_size) & q->index_mask;
 }

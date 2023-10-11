@@ -48,7 +48,7 @@ struct dtld_pool {
  * pool elements will be allocated out of a slab cache
  */
 void dtld_pool_init(struct dtld_dev *dtld, struct dtld_pool *pool,
-		    enum dtld_elem_type type);
+                    enum dtld_elem_type type);
 
 /* free resources from object pool */
 void dtld_pool_cleanup(struct dtld_pool *pool);

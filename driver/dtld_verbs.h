@@ -84,8 +84,8 @@ struct dtld_rdma_user_mmap_entry {
 
 struct dtld_cqe {
     union {
-	struct ib_wc ibwc;
-	struct ib_uverbs_wc uibwc;
+        struct ib_wc ibwc;
+        struct ib_uverbs_wc uibwc;
     };
 };
 
@@ -107,7 +107,6 @@ struct dtld_sq {
     int max_sge;
     int max_inline;
 
-    struct dtld_pool_elem elem;
     struct dtld_rdma_user_mmap_entry *ummap_ent;
 
     spinlock_t sq_lock; /* guard queue */
@@ -231,8 +230,8 @@ static inline struct dtld_rdma_user_mmap_entry *
 to_dtld_mmap_entry(struct rdma_user_mmap_entry *ent)
 {
     return ent ? container_of(ent, struct dtld_rdma_user_mmap_entry,
-			      rdma_entry) :
-		 NULL;
+                              rdma_entry) :
+                 NULL;
 }
 
 static inline struct dtld_dev *dtld_from_ibdev(struct ib_device *dev)

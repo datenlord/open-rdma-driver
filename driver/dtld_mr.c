@@ -18,7 +18,7 @@ u8 dtld_get_next_key(u32 last_key)
     u8 key;
 
     do {
-	get_random_bytes(&key, 1);
+        get_random_bytes(&key, 1);
     } while (key == last_key);
 
     return key;
@@ -28,11 +28,11 @@ u8 dtld_get_next_key(u32 last_key)
     (IB_ACCESS_REMOTE_READ | IB_ACCESS_REMOTE_WRITE | IB_ACCESS_REMOTE_ATOMIC)
 
 static int dtld_mr_init(struct dtld_mr *mr, struct ib_umem *umem, u64 length,
-			u64 iova, int access)
+                        u64 iova, int access)
 {
     unsigned int pgsz = ib_umem_find_best_pgsz(umem, SZ_2G - SZ_4K, iova);
     if (!pgsz)
-	return -EINVAL;
+        return -EINVAL;
 
     size_t pg_cnt = ib_umem_num_dma_blocks(umem, pgsz);
 
@@ -65,15 +65,15 @@ static int dtld_mr_init(struct dtld_mr *mr, struct ib_umem *umem, u64 length,
 
     page_table = kmalloc(sizeof(struct xarray), GFP_KERNEL);
     if (!page_table) {
-	return -ENOMEM;
+        return -ENOMEM;
     }
 
     xa_init(page_table);
 
     for (size_t i = 0; i < pg_cnt; i++) {
-	unsigned long pg_p = umem->address + i * pgsz;
-	xa_store(page_table, virt_to_phys((void *)pg_p), (void *)pg_p,
-		 GFP_KERNEL);
+        unsigned long pg_p = umem->address + i * pgsz;
+        xa_store(page_table, virt_to_phys((void *)pg_p), (void *)pg_p,
+                 GFP_KERNEL);
     }
 
     mr->page_table = page_table;
@@ -82,16 +82,16 @@ static int dtld_mr_init(struct dtld_mr *mr, struct ib_umem *umem, u64 length,
 }
 
 int dtld_mr_init_user(struct dtld_pd *pd, u64 start, u64 length, u64 iova,
-		      int access, struct dtld_mr *mr)
+                      int access, struct dtld_mr *mr)
 {
     int err;
     struct ib_umem *umem = ib_umem_get(pd->ibpd.device, start, length, access);
 
     if (IS_ERR(umem)) {
-	pr_warn("%s: Unable to pin memory region err = %d\n", __func__,
-		(int)PTR_ERR(umem));
-	err = PTR_ERR(umem);
-	goto err_out;
+        pr_warn("%s: Unable to pin memory region err = %d\n", __func__,
+                (int)PTR_ERR(umem));
+        err = PTR_ERR(umem);
+        goto err_out;
     }
 
     mr->ibmr.pd = &pd->ibpd;
@@ -99,7 +99,7 @@ int dtld_mr_init_user(struct dtld_pd *pd, u64 start, u64 length, u64 iova,
     err = dtld_mr_init(mr, umem, length, iova, access);
 
     if (err)
-	goto err_release_umem;
+        goto err_release_umem;
 
     return 0;
 

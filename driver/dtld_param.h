@@ -15,17 +15,17 @@
 static inline enum ib_mtu dtld_mtu_int_to_enum(int mtu)
 {
     if (mtu < 256)
-	return 0;
+        return 0;
     else if (mtu < 512)
-	return IB_MTU_256;
+        return IB_MTU_256;
     else if (mtu < 1024)
-	return IB_MTU_512;
+        return IB_MTU_512;
     else if (mtu < 2048)
-	return IB_MTU_1024;
+        return IB_MTU_1024;
     else if (mtu < 4096)
-	return IB_MTU_2048;
+        return IB_MTU_2048;
     else
-	return IB_MTU_4096;
+        return IB_MTU_4096;
 }
 
 /* Find the IB mtu for a given network MTU. */
