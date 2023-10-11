@@ -117,7 +117,6 @@ struct dtld_rq {
     int max_wr;
     int max_sge;
 
-    struct dtld_pool_elem elem;
     struct dtld_rdma_user_mmap_entry *ummap_ent;
 
     spinlock_t producer_lock; /* guard queue producer */
