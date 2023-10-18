@@ -186,8 +186,6 @@ struct dtld_mr {
     enum dtld_mr_state state;
     enum ib_mr_type type;
     int access;
-
-    struct xarray *page_table;
 };
 
 static inline struct dtld_ucontext *to_dtld_uc(struct ib_ucontext *uc)
