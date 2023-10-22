@@ -1,6 +1,6 @@
 KERNEL_SRC_DIR ?= /linux-src
 
-.PHONY: kernel driver user gdb
+.PHONY: kernel driver user model gdb
 
 kernel:
 	$(MAKE) -C $(KERNEL_SRC_DIR)
@@ -10,6 +10,9 @@ driver:
 
 user:
 	export CMAKE_EXPORT_COMPILE_COMMANDS=1 && ./rdma-core/build.sh
+
+model:
+	./scripts/build_model.sh
 
 qemu:
 	./scripts/run_qemu.sh
