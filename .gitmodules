@@ -1,4 +1,8 @@
 [submodule "rdma-core"]
 	path = rdma-core
-	url = git@github.com:datenlord/rdma-core.git
-	branch = add-dtld-driver
+	url = https://github.com/datenlord/rdma-core.git
+	branch = dtld-main
+[submodule "DistroSim"]
+	path = DistroSim
+	url = https://github.com/ruiqurm/DistroSim.git
+	branch = master
