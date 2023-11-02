@@ -1,0 +1,32 @@
+name: Test RDMA
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test-rdma:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/datenlord/open-rdma-driver
+      volumes:
+        - my_docker_volume:/volume_mount
+      options: --privileged --user root
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - uses: addnab/docker-run-action@v3
+        with:
+          image: ghcr.io/datenlord/open-rdma-driver
+          options: --privileged -v ${{ github.workspace }}:/workspaces/open-rdma-driver
+          run: |
+            cd /workspaces/open-rdma-driver
+            make model
+            make driver
+            make user
+            NON_INTERACTIVE=1 ./scripts/run_qemu.sh
+      - uses: actions/upload-artifact@v3
+        with:
+          name: test-results
+          path: |
+            .build/qemu.log
+            .build/model.log

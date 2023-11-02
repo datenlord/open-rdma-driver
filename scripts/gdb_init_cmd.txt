@@ -6,4 +6,4 @@ file /linux-src/vmlinux
 # we will pass that argument by cli.
 ## target remote :1234
 
-lx-symbols /linux-src/drivers/infiniband /workspaces/dtld-rdma-driver/driver
+lx-symbols /linux-src/drivers/infiniband /workspaces/open-rdma-driver/driver

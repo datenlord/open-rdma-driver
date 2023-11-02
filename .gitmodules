@@ -2,7 +2,6 @@
 	path = rdma-core
 	url = https://github.com/datenlord/rdma-core.git
 	branch = dtld-main
-
 [submodule "DistroSim"]
 	path = DistroSim
 	url = https://github.com/ruiqurm/DistroSim.git

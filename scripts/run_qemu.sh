@@ -4,6 +4,7 @@ set -x
 
 GIT_DIR=$(cd $(dirname $0)/..; pwd)
 BUILD_DIR=${GIT_DIR}/.build
+mkdir -p ${BUILD_DIR}
 
 PCIE_ROOT_SLOT_NUM="1"
 RP_PCIE_SLOT_NUM="0"
@@ -30,19 +31,27 @@ qemu_args="$qemu_args -drive file=/rootfs.qcow2"
 qemu_args="$qemu_args -fsdev local,security_model=passthrough,id=fsdev0,multidevs=remap,path=/"
 qemu_args="$qemu_args -device virtio-9p-pci,fsdev=fsdev0,mount_tag=hostshare"
 qemu_args="$qemu_args -netdev user,id=n1 -device virtio-net-pci,netdev=n1"
-qemu_args="$qemu_args -machine-path ${BUILD_DIR}"
-qemu_args="$qemu_args -device ioh3420,id=rootport1,slot=${PCIE_ROOT_SLOT_NUM}"
-qemu_args="$qemu_args -device remote-port-pci-adaptor,bus=rootport1,id=rp0"
-qemu_args="$qemu_args -device remote-port-pcie-root-port,id=rprootport,slot=${RP_PCIE_SLOT_NUM},rp-adaptor0=rp,rp-chan0=${RP_CHAN_NUM}"
 qemu_args="$qemu_args -serial mon:stdio"
 qemu_args="$qemu_args -s"
 
 if [ -n "$ATTACH_PCI" ]; then
    qemu_args="$qemu_args -device vfio-pci,host=$BDF,multifunction=on"
+else
+   qemu_args="$qemu_args -machine-path ${BUILD_DIR}"
+   qemu_args="$qemu_args -device ioh3420,id=rootport1,slot=${PCIE_ROOT_SLOT_NUM}"
+   qemu_args="$qemu_args -device remote-port-pci-adaptor,bus=rootport1,id=rp0"
+   qemu_args="$qemu_args -device remote-port-pcie-root-port,id=rprootport,slot=${RP_PCIE_SLOT_NUM},rp-adaptor0=rp,rp-chan0=${RP_CHAN_NUM}"
+fi
+
+if [ -n "$NON_INTERACTIVE" ]; then
+   touch ${BUILD_DIR}/non_interactive
 fi
 
 killall -u ${USER} xdma-demo qemu-system-x86_64 &>/dev/null || true
 
-LD_LIBRARY_PATH=${BUILD_DIR}/systemc-2.3.3/lib-linux64/ ${BUILD_DIR}/xdma-demo unix:${BUILD_DIR}/qemu-rport-_machine_peripheral_rp0_rp 10000 & disown;
-sleep 1
+if [ -z "$ATTACH_PCI" ]; then
+   LD_LIBRARY_PATH=${BUILD_DIR}/systemc-2.3.3/lib-linux64/ ${BUILD_DIR}/xdma-demo unix:${BUILD_DIR}/qemu-rport-_machine_peripheral_rp0_rp 10000 > ${BUILD_DIR}/model.log 2>&1 & disown;
+   sleep 1
+fi
+
 eval qemu-system-x86_64 $qemu_args
