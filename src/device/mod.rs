@@ -2,8 +2,9 @@ use thiserror::Error;
 
 mod emulated;
 mod hardware;
+mod types;
 
-pub(crate) use self::{emulated::EmulatedDevice, hardware::HardwareDevice};
+pub(crate) use self::{emulated::EmulatedDevice, hardware::HardwareDevice, types::*};
 
 /// Public interface for a device. Can be a real hardware device or a software emulation.
 pub(crate) trait DeviceAdaptor: Send + Sync {
@@ -26,18 +27,6 @@ pub(crate) trait ToCardRb<D> {
 pub(crate) trait ToHostRb<D> {
     fn pop(&self) -> D;
 }
-
-/// A descriptor for the to-card control ring buffer.
-pub(crate) enum ToCardCtrlRbDesc {}
-
-/// A descriptor for the to-host control ring buffer.
-pub(crate) enum ToHostCtrlRbDesc {}
-
-/// A descriptor for the to-card work ring buffer.
-pub(crate) struct ToCardWorkRbDesc {}
-
-/// A descriptor for the to-host work ring buffer.
-pub(crate) enum ToHostWorkRbDesc {}
 
 /// An error indicating that a ring buffer overflowed.
 #[derive(Debug, Error)]

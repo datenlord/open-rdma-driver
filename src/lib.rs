@@ -7,10 +7,9 @@ mod poll;
 #[derive(Clone)]
 pub struct Device(Arc<DeviceInner<dyn DeviceAdaptor>>);
 
+#[allow(unused)]
 struct DeviceInner<D: ?Sized> {
-    #[allow(unused)]
     is_emulated: bool,
-
     adaptor: D,
 }
 
@@ -34,7 +33,7 @@ impl Device {
 
     pub fn new_hardware() -> Self {
         let inner = Arc::new(DeviceInner {
-            is_emulated: true,
+            is_emulated: false,
             adaptor: HardwareDevice::init(),
         });
 
