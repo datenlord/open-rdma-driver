@@ -104,16 +104,9 @@ pub(crate) struct ToHostCtrlRbDescUpdatePageTable {
     common_header: CtrlRbDescCommonHeader,
 }
 
-// typedef CmdQueueReqDescQpManagementSeg0 CmdQueueRespDescQpManagementSeg0;
+// TODO: no corresponding struct
 pub(crate) struct ToHostCtrlRbDescQpManagement {
     common_header: CtrlRbDescCommonHeader,
-    is_valid: bool,
-    is_error: bool,
-    qpn: u32,
-    pd_handler: u32,
-    qp_type: QpType,
-    rq_access_flags: u8,
-    pmtu: Pmtu,
 }
 
 // typedef struct {
@@ -364,12 +357,12 @@ pub(crate) enum ToHostWorkRbDescType {
 }
 
 // typedef enum {
-//     IBV_QPT_RC = 2,
-//     IBV_QPT_UC = 3,
-//     IBV_QPT_UD = 4,
-//     // IBV_QPT_RAW_PACKET = 8,
-//     IBV_QPT_XRC_SEND = 9,
-//     IBV_QPT_XRC_RECV = 10
+//     IBV_QPT_RC         = 2,
+//     IBV_QPT_UC         = 3,
+//     IBV_QPT_UD         = 4,
+//     IBV_QPT_RAW_PACKET = 8,
+//     IBV_QPT_XRC_SEND   = 9,
+//     IBV_QPT_XRC_RECV   = 10
 //     // IBV_QPT_DRIVER = 0xff
 // } TypeQP deriving(Bits, Eq, FShow);
 pub(crate) enum QpType {
@@ -484,30 +477,22 @@ pub(crate) struct ScatterGatherElement {
 }
 
 // typedef enum {
-//     RDMA_REQ_ST_NORMAL,
-//     RDMA_REQ_ST_SEQ_ERR,
-//     RDMA_REQ_ST_RNR,
-//     RDMA_REQ_ST_INV_REQ,
-//     RDMA_REQ_ST_INV_RD,
-//     RDMA_REQ_ST_RMT_ACC,
-//     RDMA_REQ_ST_RMT_OP,
-//     RDMA_REQ_ST_DUP,
-//     RDMA_REQ_ST_ERR_FLUSH_RR,
-//     RDMA_REQ_ST_DISCARD,
-//     RDMA_REQ_ST_UNKNOWN
+//     RDMA_REQ_ST_NORMAL              = 1,
+//     RDMA_REQ_ST_INV_ACC_FLAG        = 2,
+//     RDMA_REQ_ST_INV_OPCODE          = 3,
+//     RDMA_REQ_ST_INV_MR_KEY          = 4,
+//     RDMA_REQ_ST_INV_MR_REGION       = 5,
+//     RDMA_REQ_ST_UNKNOWN             = 6,
+//     RDMA_REQ_ST_MAX_GUARD           = 255
 // } RdmaReqStatus deriving(Bits, Eq, FShow);
 pub(crate) enum RdmaReqStatus {
-    Normal,
-    SeqErr,
-    Rnr,
-    InvReq,
-    InvRd,
-    RmtAcc,
-    RmtOp,
-    Dup,
-    ErrFlushRr,
-    Discard,
-    Unknown,
+    Normal = 1,
+    InvAccFlag = 2,
+    InvOpcode = 3,
+    InvMrKey = 4,
+    InvMrRegion = 5,
+    Unknown = 6,
+    MaxGuard = 255,
 }
 
 // typedef enum {
