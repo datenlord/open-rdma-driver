@@ -41,13 +41,13 @@ pub(crate) enum ToHostWorkRbDesc {
 //     CmdQueueDescCommonHead      commonHeader;
 // } CmdQueueReqDescUpdateMrTable deriving(Bits, FShow);
 pub(crate) struct ToCardCtrlRbDescUpdateMrTable {
-    common_header: CtrlRbDescCommonHeader,
-    base_va: u64,
-    mr_length: u32,
-    mr_key: u32,
-    pd_handler: u32,
-    acc_flags: u8,
-    pgt_offset: u32,
+    pub(crate) common_header: CtrlRbDescCommonHeader,
+    pub(crate) base_va: u64,
+    pub(crate) mr_length: u32,
+    pub(crate) mr_key: u32,
+    pub(crate) pd_handler: u32,
+    pub(crate) acc_flags: u8,
+    pub(crate) pgt_offset: u32,
 }
 
 // typedef struct {
@@ -58,10 +58,10 @@ pub(crate) struct ToCardCtrlRbDescUpdateMrTable {
 //     CmdQueueDescCommonHead          commonHeader;
 // } CmdQueueReqDescUpdatePGT deriving(Bits, FShow);
 pub(crate) struct ToCardCtrlRbDescUpdatePageTable {
-    common_header: CtrlRbDescCommonHeader,
-    dma_addr: u64,
-    start_index: u32,
-    dma_read_length: u32,
+    pub(crate) common_header: CtrlRbDescCommonHeader,
+    pub(crate) dma_addr: u64,
+    pub(crate) start_index: u32,
+    pub(crate) dma_read_length: u32,
 }
 
 // typedef struct {
@@ -79,19 +79,19 @@ pub(crate) struct ToCardCtrlRbDescUpdatePageTable {
 //     CmdQueueDescCommonHead          commonHeader;   // 64  bits
 // } CmdQueueReqDescQpManagementSeg0 deriving(Bits, FShow);
 pub(crate) struct ToCardCtrlRbDescQpManagement {
-    common_header: CtrlRbDescCommonHeader,
-    is_valid: bool,
-    is_error: bool,
-    qpn: u32,
-    pd_handler: u32,
-    qp_type: QpType,
-    rq_access_flags: u8,
-    pmtu: Pmtu,
+    pub(crate) common_header: CtrlRbDescCommonHeader,
+    pub(crate) is_valid: bool,
+    pub(crate) is_error: bool,
+    pub(crate) qpn: u32,
+    pub(crate) pd_handler: u32,
+    pub(crate) qp_type: QpType,
+    pub(crate) rq_access_flags: u8,
+    pub(crate) pmtu: Pmtu,
 }
 
 // TODO: no corresponding struct
 pub(crate) struct ToHostCtrlRbDescUpdateMrTable {
-    common_header: CtrlRbDescCommonHeader,
+    pub(crate) common_header: CtrlRbDescCommonHeader,
 }
 
 // typedef struct {
@@ -101,12 +101,12 @@ pub(crate) struct ToHostCtrlRbDescUpdateMrTable {
 //     CmdQueueDescCommonHead          commonHeader;
 // } CmdQueueRespDescUpdatePGT deriving(Bits, FShow);
 pub(crate) struct ToHostCtrlRbDescUpdatePageTable {
-    common_header: CtrlRbDescCommonHeader,
+    pub(crate) common_header: CtrlRbDescCommonHeader,
 }
 
 // TODO: no corresponding struct
 pub(crate) struct ToHostCtrlRbDescQpManagement {
-    common_header: CtrlRbDescCommonHeader,
+    pub(crate) common_header: CtrlRbDescCommonHeader,
 }
 
 // typedef struct {
@@ -135,19 +135,19 @@ pub(crate) struct ToHostCtrlRbDescQpManagement {
 //     PMTU                    pmtu;               // 3  bits
 // } SendQueueReqDescSeg1 deriving(Bits, FShow);
 pub(crate) struct ToCardWorkRbDescRequest {
-    common_header: ToCardWorkRbDescCommonHeader,
-    raddr: u64,
-    rkey: [u8; 4],
-    dqp_ip: Ipv4Addr, // using Ipv4Addr temporarily for convenience
-    pmtu: Pmtu,
-    flags: u8,
-    qp_type: QpType,
-    sge_cnt: u8,
-    psn: u32,
-    mac_addr: [u8; 6],
-    dqpn: u32,
-    imm: [u8; 4],
-    sgl: ScatterGatherList,
+    pub(crate) common_header: ToCardWorkRbDescCommonHeader,
+    pub(crate) raddr: u64,
+    pub(crate) rkey: [u8; 4],
+    pub(crate) dqp_ip: Ipv4Addr, // using Ipv4Addr temporarily for convenience
+    pub(crate) pmtu: Pmtu,
+    pub(crate) flags: u8,
+    pub(crate) qp_type: QpType,
+    pub(crate) sge_cnt: u8,
+    pub(crate) psn: u32,
+    pub(crate) mac_addr: [u8; 6],
+    pub(crate) dqpn: u32,
+    pub(crate) imm: [u8; 4],
+    pub(crate) sgl: ScatterGatherList,
 }
 
 // typedef struct {
@@ -157,8 +157,8 @@ pub(crate) struct ToCardWorkRbDescRequest {
 //     MeatReportQueueDescType         descType;       // 1
 // } MeatReportQueueDescSendQueueReport deriving(Bits, FShow);
 pub(crate) struct ToHostWorkRbDescSendQueueReport {
-    desc_type: ToHostWorkRbDescType,
-    has_dma_resp_err: bool,
+    pub(crate) desc_type: ToHostWorkRbDescType,
+    pub(crate) has_dma_resp_err: bool,
 }
 
 // typedef struct {
@@ -169,9 +169,9 @@ pub(crate) struct ToHostWorkRbDescSendQueueReport {
 //     MeatReportQueueDescType         descType;       // 1
 // } MeatReportQueueDescBth deriving(Bits, FShow);
 pub(crate) struct ToHostWorkRbDescBth {
-    desc_type: ToHostWorkRbDescType,
-    bth: ToHostWorkRbDescFragBth,
-    req_status: RdmaReqStatus,
+    pub(crate) desc_type: ToHostWorkRbDescType,
+    pub(crate) req_status: RdmaReqStatus,
+    pub(crate) bth: ToHostWorkRbDescFragBth,
 }
 
 // typedef struct {
@@ -183,11 +183,11 @@ pub(crate) struct ToHostWorkRbDescBth {
 //     MeatReportQueueDescType         descType;       // 1
 // } MeatReportQueueDescBthRethImmDT deriving(Bits, FShow);
 pub(crate) struct ToHostWorkRbDescBthRethImmDt {
-    desc_type: ToHostWorkRbDescType,
-    req_status: RdmaReqStatus,
-    bth: ToHostWorkRbDescFragBth,
-    reth: ToHostWorkRbDescFragReth,
-    imm_dt: ToHostWorkRbDescFragImmDt,
+    pub(crate) desc_type: ToHostWorkRbDescType,
+    pub(crate) req_status: RdmaReqStatus,
+    pub(crate) bth: ToHostWorkRbDescFragBth,
+    pub(crate) reth: ToHostWorkRbDescFragReth,
+    pub(crate) imm_dt: ToHostWorkRbDescFragImmDt,
 }
 
 // typedef struct {
@@ -199,10 +199,10 @@ pub(crate) struct ToHostWorkRbDescBthRethImmDt {
 //     MeatReportQueueDescType         descType;       // 1
 // } MeatReportQueueDescBthAeth deriving(Bits, FShow);
 pub(crate) struct ToHostWorkRbDescBthAeth {
-    desc_type: ToHostWorkRbDescType,
-    req_status: RdmaReqStatus,
-    bth: ToHostWorkRbDescFragBth,
-    aeth: ToHostWorkRbDescFragAeth,
+    pub(crate) desc_type: ToHostWorkRbDescType,
+    pub(crate) req_status: RdmaReqStatus,
+    pub(crate) bth: ToHostWorkRbDescFragBth,
+    pub(crate) aeth: ToHostWorkRbDescFragAeth,
 }
 
 // typedef struct {
@@ -210,7 +210,7 @@ pub(crate) struct ToHostWorkRbDescBthAeth {
 //     MeatReportQueueDescFragSecondaryRETH        secReth;         // 96
 // } MeatReportQueueDescSecondaryReth deriving(Bits, FShow);
 pub(crate) struct ToHostWorkRbDescSecondaryReth {
-    sec_reth: ToHostWorkRbDescFragSecondaryReth,
+    pub(crate) sec_reth: ToHostWorkRbDescFragSecondaryReth,
 }
 
 // typedef struct {
@@ -222,11 +222,11 @@ pub(crate) struct ToHostWorkRbDescSecondaryReth {
 //     Bool                    valid;
 // } CmdQueueDescCommonHead deriving(Bits, FShow);
 pub(crate) struct CtrlRbDescCommonHeader {
-    valid: bool,
-    opcode: CtrlRbDescOpcode,
-    extra_segment_cnt: u8,
-    is_success_or_need_signal_cplt: bool,
-    user_data: [u8; 4],
+    pub(crate) valid: bool,
+    pub(crate) opcode: CtrlRbDescOpcode,
+    pub(crate) extra_segment_cnt: u8,
+    pub(crate) is_success_or_need_signal_cplt: bool,
+    pub(crate) user_data: [u8; 4],
 }
 
 // typedef enum {
@@ -251,13 +251,13 @@ pub(crate) enum CtrlRbDescOpcode {
 //     Bool                    valid;
 // } SendQueueDescCommonHead deriving(Bits, FShow);
 pub(crate) struct ToCardWorkRbDescCommonHeader {
-    valid: bool,
-    opcode: ToCardWorkRbDescOpcode,
-    is_last: bool,
-    is_first: bool,
-    extra_segment_cnt: u8,
-    is_success_or_need_signal_cplt: bool,
-    total_len: u32,
+    pub(crate) valid: bool,
+    pub(crate) opcode: ToCardWorkRbDescOpcode,
+    pub(crate) is_last: bool,
+    pub(crate) is_first: bool,
+    pub(crate) extra_segment_cnt: u8,
+    pub(crate) is_success_or_need_signal_cplt: bool,
+    pub(crate) total_len: u32,
 }
 
 // typedef enum {
@@ -299,12 +299,12 @@ pub(crate) enum ToCardWorkRbDescOpcode {
 //     TransType                       trans;        // 3
 // } MeatReportQueueDescFragBTH deriving(Bits, FShow);
 pub(crate) struct ToHostWorkRbDescFragBth {
-    trans: TransType,
-    opcode: RdmaOpcode,
-    dqpn: u32,
-    psn: u32,
-    solicited: bool,
-    ack_req: bool,
+    pub(crate) trans: TransType,
+    pub(crate) opcode: RdmaOpcode,
+    pub(crate) dqpn: u32,
+    pub(crate) psn: u32,
+    pub(crate) solicited: bool,
+    pub(crate) ack_req: bool,
 }
 
 // typedef struct {
@@ -313,9 +313,9 @@ pub(crate) struct ToHostWorkRbDescFragBth {
 //     ADDR                    va;           // 64
 // } MeatReportQueueDescFragRETH deriving(Bits, FShow);
 pub(crate) struct ToHostWorkRbDescFragReth {
-    va: u64,
-    rkey: [u8; 4],
-    dlen: u32,
+    pub(crate) va: u64,
+    pub(crate) rkey: [u8; 4],
+    pub(crate) dlen: u32,
 }
 
 // typedef struct {
@@ -325,10 +325,10 @@ pub(crate) struct ToHostWorkRbDescFragReth {
 //     PSN                     lastRetryPSN; // 24
 // } MeatReportQueueDescFragAETH deriving(Bits, FShow);
 pub(crate) struct ToHostWorkRbDescFragAeth {
-    last_retry_psn: u32,
-    msn: u32,
-    value: u8,
-    code: AethCode,
+    pub(crate) last_retry_psn: u32,
+    pub(crate) msn: u32,
+    pub(crate) value: u8,
+    pub(crate) code: AethCode,
 }
 
 // typedef struct {
@@ -336,21 +336,22 @@ pub(crate) struct ToHostWorkRbDescFragAeth {
 //     ADDR                            secondaryVa;     // 64
 // } MeatReportQueueDescFragSecondaryRETH deriving(Bits, FShow);
 pub(crate) struct ToHostWorkRbDescFragSecondaryReth {
-    secondary_va: u64,
-    secondary_rkey: [u8; 4],
+    pub(crate) secondary_va: u64,
+    pub(crate) secondary_rkey: [u8; 4],
 }
 
 // typedef struct {
 //     IMM                             data;           // 32
 // } MeatReportQueueDescFragImmDT deriving(Bits, FShow);
 pub(crate) struct ToHostWorkRbDescFragImmDt {
-    data: [u8; 4],
+    pub(crate) data: [u8; 4],
 }
 
 // typedef enum {
 //     MeatReportQueueDescTypeRecvPacketMeta = 0,
 //     MeatReportQueueDescTypeSendFinished   = 1
 // } MeatReportQueueDescType deriving(Bits, FShow);
+#[derive(Debug, PartialEq, Eq)]
 pub(crate) enum ToHostWorkRbDescType {
     RecvPacketMeta = 0,
     SendFinished = 1,
@@ -461,8 +462,8 @@ pub(crate) enum RdmaOpcode {
 
 // TODO: temporary struct
 pub(crate) struct ScatterGatherList {
-    data: [ScatterGatherElement; 1],
-    len: u32,
+    pub(crate) data: [ScatterGatherElement; 1],
+    pub(crate) len: u32,
 }
 
 // typedef struct {
@@ -471,9 +472,9 @@ pub(crate) struct ScatterGatherList {
 //     LKEY   lkey;          // 32 bits
 // } SendQueueReqDescFragSGE deriving(Bits, FShow);
 pub(crate) struct ScatterGatherElement {
-    laddr: u64,
-    lkey: [u8; 4],
-    len: u32,
+    pub(crate) laddr: u64,
+    pub(crate) lkey: [u8; 4],
+    pub(crate) len: u32,
 }
 
 // typedef enum {
@@ -485,6 +486,7 @@ pub(crate) struct ScatterGatherElement {
 //     RDMA_REQ_ST_UNKNOWN             = 6,
 //     RDMA_REQ_ST_MAX_GUARD           = 255
 // } RdmaReqStatus deriving(Bits, Eq, FShow);
+#[derive(Debug, PartialEq, Eq)]
 pub(crate) enum RdmaReqStatus {
     Normal = 1,
     InvAccFlag = 2,
