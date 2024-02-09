@@ -2,6 +2,7 @@ use super::{
     DeviceAdaptor, Overflowed, ToCardCtrlRbDesc, ToCardRb, ToCardWorkRbDesc, ToHostCtrlRbDesc,
     ToHostRb, ToHostWorkRbDesc,
 };
+use std::error::Error;
 
 pub(crate) struct HardwareDevice {
     to_card_ctrl_rb: ToCardCtrlRb,
@@ -16,13 +17,13 @@ struct ToCardWorkRb;
 struct ToHostWorkRb;
 
 impl HardwareDevice {
-    pub(crate) fn init() -> Self {
-        Self {
+    pub(crate) fn init() -> Result<Self, Box<dyn Error>> {
+        Ok(Self {
             to_card_ctrl_rb: ToCardCtrlRb,
             to_host_ctrl_rb: ToHostCtrlRb,
             to_card_work_rb: ToCardWorkRb,
             to_host_work_rb: ToHostWorkRb,
-        }
+        })
     }
 }
 

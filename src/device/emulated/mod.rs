@@ -2,6 +2,7 @@ use super::{
     DeviceAdaptor, Overflowed, ToCardCtrlRbDesc, ToCardRb, ToCardWorkRbDesc, ToHostCtrlRbDesc,
     ToHostRb, ToHostWorkRbDesc,
 };
+use std::error::Error;
 
 /// An emulated device implementation of the device.
 pub(crate) struct EmulatedDevice {
@@ -19,14 +20,13 @@ struct ToHostWorkRb;
 impl EmulatedDevice {
     /// Initializing an emulated device.
     /// This function needs to be synchronized.
-    /// TODO: is this fallible?
-    pub(crate) fn init() -> Self {
-        Self {
+    pub(crate) fn init() -> Result<Self, Box<dyn Error>> {
+        Ok(Self {
             to_card_ctrl_rb: ToCardCtrlRb,
             to_host_ctrl_rb: ToHostCtrlRb,
             to_card_work_rb: ToCardWorkRb,
             to_host_work_rb: ToHostWorkRb,
-        }
+        })
     }
 }
 
