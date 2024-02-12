@@ -13,10 +13,11 @@ use std::{
 use thiserror::Error;
 
 mod device;
-mod mr;
-mod pd;
 mod poll;
-mod qp;
+
+pub mod mr;
+pub mod pd;
+pub mod qp;
 
 pub use crate::{mr::Mr, pd::Pd, qp::Qp};
 
