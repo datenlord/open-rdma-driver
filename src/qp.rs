@@ -24,7 +24,10 @@ pub struct Qp {
     pub(crate) pmtu: DevicePmtu,
 }
 
-pub(crate) struct QpCtx {}
+pub(crate) struct QpCtx {
+    pub(crate) send_psn: u32,
+    pub(crate) recv_psn: u32,
+}
 
 pub enum QpType {
     Rc = 2,
@@ -84,7 +87,13 @@ impl Device {
         }
 
         let pd_res = pd_ctx.qp.insert(qp.clone());
-        let qp_res = qp_pool.insert(qp.clone(), QpCtx {});
+        let qp_res = qp_pool.insert(
+            qp.clone(),
+            QpCtx {
+                send_psn: 0,
+                recv_psn: 0,
+            },
+        );
 
         assert!(pd_res);
         assert!(qp_res.is_none());
