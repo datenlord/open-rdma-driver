@@ -391,7 +391,7 @@ impl RecvPktMap {
         }
     }
 
-    fn _insert(&mut self, psn: u32) {
+    fn insert(&mut self, psn: u32) {
         let psn = (psn - self.start_psn) as usize;
 
         let stage_0_idx = psn >> 6; // which u64 in stage 0
