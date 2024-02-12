@@ -156,6 +156,8 @@ pub enum Error {
     InvalidQp,
     #[error("PD in use")]
     PdInUse,
+    #[error("QP in use")]
+    QpInUse,
     #[error("no available QP")]
     NoAvailableQp,
 }

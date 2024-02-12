@@ -44,6 +44,10 @@ impl Device {
             return Err(Error::PdInUse);
         }
 
+        if !pd_ctx.qp.is_empty() {
+            return Err(Error::QpInUse);
+        }
+
         pool.remove(&pd);
 
         Ok(())
