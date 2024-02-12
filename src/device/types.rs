@@ -274,6 +274,7 @@ pub(crate) struct ToCardWorkRbDescCommonHeader {
 //     IBV_WR_TSO                  = 10,
 //     IBV_WR_DRIVER1              = 11
 // } WorkReqOpCode deriving(Bits, Eq, FShow);
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum ToCardWorkRbDescOpcode {
     RdmaWrite = 0,
     RdmaWriteWithImm = 1,
@@ -351,7 +352,7 @@ pub(crate) struct ToHostWorkRbDescFragImmDt {
 //     MeatReportQueueDescTypeRecvPacketMeta = 0,
 //     MeatReportQueueDescTypeSendFinished   = 1
 // } MeatReportQueueDescType deriving(Bits, FShow);
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum ToHostWorkRbDescType {
     RecvPacketMeta = 0,
     SendFinished = 1,
@@ -366,6 +367,7 @@ pub(crate) enum ToHostWorkRbDescType {
 //     IBV_QPT_XRC_RECV   = 10
 //     // IBV_QPT_DRIVER = 0xff
 // } TypeQP deriving(Bits, Eq, FShow);
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum QpType {
     Rc = 2,
     Uc = 3,
@@ -382,6 +384,7 @@ pub(crate) enum QpType {
 //     IBV_MTU_2048 = 4,
 //     IBV_MTU_4096 = 5
 // } PMTU deriving(Bits, Eq, FShow);
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Pmtu {
     Mtu256 = 1,
     Mtu512 = 2,
@@ -398,6 +401,7 @@ pub(crate) enum Pmtu {
 //     TRANS_TYPE_CNP = 3'h4, // 3'b100
 //     TRANS_TYPE_XRC = 3'h5  // 3'b101
 // } TransType deriving(Bits, Bounded, Eq, FShow);
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum TransType {
     Rc = 0x00,
     Uc = 0x01,
@@ -433,6 +437,7 @@ pub(crate) enum TransType {
 //     SEND_LAST_WITH_INVALIDATE      = 5'h16,
 //     SEND_ONLY_WITH_INVALIDATE      = 5'h17
 // } RdmaOpCode deriving(Bits, Bounded, Eq, FShow);
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum RdmaOpcode {
     SendFirst = 0x00,
     SendMiddle = 0x01,
@@ -486,7 +491,7 @@ pub(crate) struct ScatterGatherElement {
 //     RDMA_REQ_ST_UNKNOWN             = 6,
 //     RDMA_REQ_ST_MAX_GUARD           = 255
 // } RdmaReqStatus deriving(Bits, Eq, FShow);
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum RdmaReqStatus {
     Normal = 1,
     InvAccFlag = 2,
@@ -503,6 +508,7 @@ pub(crate) enum RdmaReqStatus {
 //     AETH_CODE_RSVD = 2'b10,
 //     AETH_CODE_NAK  = 2'b11
 // } AethCode deriving(Bits, Bounded, Eq, FShow);
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum AethCode {
     Ack = 0b00,
     Rnr = 0b01,
