@@ -22,7 +22,7 @@ impl Device {
     }
 
     fn handle_work_desc_send_report(&self, _desc: ToHostWorkRbDescSendQueueReport) {
-        let mut ctx_map = self.0.recv_op_ctx.lock().unwrap();
+        let mut ctx_map = self.0.send_op_ctx.lock().unwrap();
 
         let Some((_, ctx)) = ctx_map.iter_mut().next() else {
             eprintln!("no send ctx found");
@@ -30,6 +30,7 @@ impl Device {
         };
 
         ctx.result = Some(true);
+        ctx.thread.unpark();
     }
 
     fn handle_work_desc_bth(&self, desc: ToHostWorkRbDescBth) {
