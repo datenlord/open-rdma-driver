@@ -15,8 +15,9 @@ use std::{
     error::Error as StdError,
     net::Ipv4Addr,
     ops::Range,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, OnceLock},
     thread::{self, Thread},
+    time::Duration,
 };
 use thiserror::Error;
 
@@ -42,6 +43,7 @@ struct DeviceInner<D: ?Sized> {
     send_op_ctx: Mutex<HashMap<Qp, SendOpCtx>>,
     recv_op_ctx: Mutex<HashMap<Qp, RecvOpCtx>>,
     revc_pkt_map: RecvPktMap, // TODO: extend to support multiple QPs
+    check_recv_pkt_comp_thread: OnceLock<Thread>,
     adaptor: D,
 }
 
@@ -52,24 +54,20 @@ pub struct ScatterGatherElement {
 }
 
 struct CtrlOpCtx {
-    #[allow(unused)]
     thread: Thread,
     result: Option<bool>,
 }
 
 struct SendOpCtx {
-    #[allow(unused)]
     thread: Thread,
     result: Option<bool>,
 }
 
 struct RecvOpCtx {
-    #[allow(unused)]
     thread: Thread,
     result: Option<bool>,
 }
 
-#[allow(unused)]
 struct RecvPktMap {
     start_psn: u32,
     stage_0: Box<[u64]>,
@@ -81,8 +79,8 @@ struct RecvPktMap {
 }
 
 /// Yields PSN ranges of missing packets
-#[allow(unused)]
 struct MissingPkt<'a> {
+    #[allow(unused)]
     map: &'a RecvPktMap,
 }
 
@@ -97,6 +95,7 @@ impl Device {
             send_op_ctx: Mutex::new(HashMap::new()),
             recv_op_ctx: Mutex::new(HashMap::new()),
             revc_pkt_map: RecvPktMap::new(0, 0),
+            check_recv_pkt_comp_thread: OnceLock::new(),
             adaptor: EmulatedDevice::init().map_err(Error::Device)?,
         });
 
@@ -121,6 +120,7 @@ impl Device {
             recv_op_ctx: Mutex::new(HashMap::new()),
             ctrl_op_ctx: Mutex::new(HashMap::new()),
             revc_pkt_map: RecvPktMap::new(0, 0),
+            check_recv_pkt_comp_thread: OnceLock::new(),
             adaptor: HardwareDevice::init().map_err(Error::Device)?,
         });
 
@@ -128,9 +128,11 @@ impl Device {
 
         let dev_for_poll_ctrl_rb = dev.clone();
         let dev_for_poll_work_rb = dev.clone();
+        let dev_for_check_recv_pkt_comp = dev.clone();
 
         thread::spawn(move || dev_for_poll_ctrl_rb.poll_ctrl_rb());
         thread::spawn(move || dev_for_poll_work_rb.poll_work_rb());
+        thread::spawn(move || dev_for_check_recv_pkt_comp.check_recv_pkt_comp());
 
         Ok(dev)
     }
@@ -273,6 +275,7 @@ impl Device {
             }
         }
 
+        self.0.check_recv_pkt_comp_thread.get().unwrap().unpark();
         thread::park();
 
         let RecvOpCtx {
@@ -361,6 +364,35 @@ impl Device {
 
         Ok(result)
     }
+
+    fn check_recv_pkt_comp(self) {
+        self.0
+            .check_recv_pkt_comp_thread
+            .set(thread::current())
+            .unwrap();
+
+        loop {
+            thread::park(); //park and wait for new recv op
+
+            loop {
+                if self.0.revc_pkt_map.is_complete() {
+                    break;
+                }
+
+                thread::sleep(Duration::from_micros(100));
+            }
+
+            let mut ctx_map = self.0.recv_op_ctx.lock().unwrap();
+
+            let Some((_, ctx)) = ctx_map.iter_mut().next() else {
+                eprintln!("no send ctx found");
+                continue;
+            };
+
+            ctx.result = Some(true);
+            ctx.thread.unpark();
+        }
+    }
 }
 
 impl RecvPktMap {
@@ -420,7 +452,7 @@ impl RecvPktMap {
         self.stage_2[stage_2_idx] |= stage_2_bit; // set bit in stage 2
     }
 
-    fn _is_complete(&self) -> bool {
+    fn is_complete(&self) -> bool {
         self.stage_2
             .iter()
             .enumerate()
