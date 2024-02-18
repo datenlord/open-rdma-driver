@@ -15,7 +15,10 @@ use std::{
     error::Error as StdError,
     net::Ipv4Addr,
     ops::Range,
-    sync::{Arc, Mutex, OnceLock},
+    sync::{
+        atomic::{AtomicU32, Ordering},
+        Arc, Mutex, OnceLock,
+    },
     thread::{self, Thread},
     time::Duration,
 };
@@ -82,6 +85,13 @@ struct RecvPktMap {
 struct MissingPkt<'a> {
     #[allow(unused)]
     map: &'a RecvPktMap,
+}
+
+static NEXT_CTRL_OP_ID: AtomicU32 = AtomicU32::new(0);
+
+fn get_ctrl_op_id() -> [u8; 4] {
+    // TODO: make id unique between different processes
+    NEXT_CTRL_OP_ID.fetch_add(1, Ordering::AcqRel).to_le_bytes()
 }
 
 impl Device {

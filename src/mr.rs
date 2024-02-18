@@ -41,7 +41,7 @@ impl Device {
 
         let pd_ctx = pd_pool.get_mut(&mr.pd).ok_or(Error::InvalidPd)?;
 
-        let id = rand::thread_rng().next_u32().to_le_bytes();
+        let id = super::get_ctrl_op_id();
 
         let desc_header = CtrlRbDescCommonHeader {
             valid: true,
@@ -86,7 +86,7 @@ impl Device {
 
         let pd_ctx = pd_pool.get_mut(&mr.pd).ok_or(Error::InvalidPd)?;
 
-        let id = rand::thread_rng().next_u32().to_le_bytes();
+        let id = super::get_ctrl_op_id();
 
         let desc_header = CtrlRbDescCommonHeader {
             valid: false,
