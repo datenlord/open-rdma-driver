@@ -8,11 +8,12 @@ use crate::{
 use rand::RngCore as _;
 use std::{
     hash::{Hash, Hasher},
+    mem,
     sync::atomic::{AtomicBool, Ordering},
 };
 
-const MAX_QP_CNT: usize = 1;
-static QP_AVAILABLE: [AtomicBool; MAX_QP_CNT] = [AtomicBool::new(true); MAX_QP_CNT];
+const QP_MAX_CNT: usize = 1;
+static QP_AVAILABLITY: [AtomicBool; QP_MAX_CNT] = unsafe { mem::transmute([true; QP_MAX_CNT]) };
 
 #[derive(Debug, Clone)]
 pub struct Qp {
@@ -40,7 +41,7 @@ impl Device {
         let mut qp_pool = self.0.qp.lock().unwrap();
         let mut pd_pool = self.0.pd.lock().unwrap();
 
-        let Some(qpn) = QP_AVAILABLE
+        let Some(qpn) = QP_AVAILABLITY
             .iter()
             .enumerate()
             .find_map(|(idx, n)| n.swap(false, Ordering::AcqRel).then_some(idx))

@@ -188,7 +188,7 @@ impl Device {
             flags,
             qp_type: qp.qp_type.clone(),
             sge_cnt: sgl.len() as u8,
-            psn,
+            psn, // TODO: calculate psn
             mac_addr,
             dqpn,
             imm: [0; 4],
