@@ -102,7 +102,7 @@ impl Device {
         let id = super::get_ctrl_op_id();
 
         let desc_header = CtrlRbDescCommonHeader {
-            valid: false,
+            valid: true,
             opcode: CtrlRbDescOpcode::UpdateMrTable,
             extra_segment_cnt: 0,
             is_success_or_need_signal_cplt: false,
@@ -111,11 +111,11 @@ impl Device {
 
         let desc = ToCardCtrlRbDesc::UpdateMrTable(ToCardCtrlRbDescUpdateMrTable {
             common_header: desc_header,
-            base_va: mr.addr as u64,
-            mr_length: mr.len as u32,
-            mr_key: mr.lkey, // TODO: which key?
-            pd_handler: mr.pd.handle,
-            acc_flags: mr.acc_flags as u8,
+            base_va: 0,
+            mr_length: 0,
+            mr_key: mr.lkey,
+            pd_handler: 0,
+            acc_flags: 0,
             pgt_offset: 0,
         });
 

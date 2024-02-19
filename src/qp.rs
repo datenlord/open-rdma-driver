@@ -36,8 +36,22 @@ pub enum QpType {
     Ud = 4,
 }
 
+pub enum Pmtu {
+    Mtu256 = 1,
+    Mtu512 = 2,
+    Mtu1024 = 3,
+    Mtu2048 = 4,
+    Mtu4096 = 5,
+}
+
 impl Device {
-    pub fn create_qp(&self, pd: Pd, qp_type: QpType, rq_acc_flags: u8) -> Result<Qp, Error> {
+    pub fn create_qp(
+        &self,
+        pd: Pd,
+        qp_type: QpType,
+        pmtu: Pmtu,
+        rq_acc_flags: u8,
+    ) -> Result<Qp, Error> {
         let mut qp_pool = self.0.qp.lock().unwrap();
         let mut pd_pool = self.0.pd.lock().unwrap();
 
@@ -55,7 +69,7 @@ impl Device {
             qpn: qpn as u32,
             qp_type: DeviceQpType::from(qp_type),
             rq_acc_flags,
-            pmtu: DevicePmtu::Mtu4096, // TODO: retrieve PMTU?
+            pmtu: DevicePmtu::from(pmtu),
         };
 
         let pd_ctx = pd_pool.get_mut(&qp.pd).ok_or(Error::InvalidPd)?;
@@ -115,7 +129,7 @@ impl Device {
         let id = super::get_ctrl_op_id();
 
         let desc_header = CtrlRbDescCommonHeader {
-            valid: false,
+            valid: true,
             opcode: CtrlRbDescOpcode::QpManagement,
             extra_segment_cnt: 0,
             is_success_or_need_signal_cplt: false,
@@ -124,12 +138,12 @@ impl Device {
 
         let desc = ToCardCtrlRbDesc::QpManagement(ToCardCtrlRbDescQpManagement {
             common_header: desc_header,
-            is_valid: true,
+            is_valid: false,
             is_error: false,
             qpn: qp.qpn,
-            pd_handler: qp.pd.handle,
+            pd_handler: 0,
             qp_type: qp.qp_type.clone(),
-            rq_access_flags: qp.rq_acc_flags,
+            rq_access_flags: 0,
             pmtu: qp.pmtu.clone(),
         });
 
@@ -166,6 +180,18 @@ impl From<QpType> for DeviceQpType {
             QpType::Rc => Self::Rc,
             QpType::Uc => Self::Uc,
             QpType::Ud => Self::Ud,
+        }
+    }
+}
+
+impl From<Pmtu> for DevicePmtu {
+    fn from(pmtu: Pmtu) -> Self {
+        match pmtu {
+            Pmtu::Mtu256 => Self::Mtu256,
+            Pmtu::Mtu512 => Self::Mtu512,
+            Pmtu::Mtu1024 => Self::Mtu1024,
+            Pmtu::Mtu2048 => Self::Mtu2048,
+            Pmtu::Mtu4096 => Self::Mtu4096,
         }
     }
 }
