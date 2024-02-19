@@ -5,7 +5,14 @@ use crate::{
     Device, Error, Pd,
 };
 use rand::RngCore as _;
-use std::hash::{Hash, Hasher};
+use std::{
+    hash::{Hash, Hasher},
+    mem,
+    sync::atomic::{AtomicU32, Ordering},
+};
+
+const MR_IDX_BITS: usize = 10;
+static NEXT_MR_IDX: AtomicU32 = AtomicU32::new(0);
 
 #[derive(Debug, Clone)]
 pub struct Mr {
@@ -29,14 +36,20 @@ impl Device {
         let mut mr_pool = self.0.mr.lock().unwrap();
         let mut pd_pool = self.0.pd.lock().unwrap();
 
+        let key_idx =
+            NEXT_MR_IDX.fetch_add(1, Ordering::AcqRel) << (mem::size_of::<u32>() * 8 - MR_IDX_BITS);
+        let key_secret = rand::thread_rng().next_u32() >> MR_IDX_BITS;
+
+        let key = key_idx | key_secret;
+
         let mr = Mr {
             handle: rand::thread_rng().next_u32(),
             pd,
             addr,
             len,
             acc_flags,
-            lkey: rand::thread_rng().next_u32(),
-            rkey: rand::thread_rng().next_u32(),
+            lkey: key,
+            rkey: key,
         };
 
         let pd_ctx = pd_pool.get_mut(&mr.pd).ok_or(Error::InvalidPd)?;
@@ -55,7 +68,7 @@ impl Device {
             common_header: desc_header,
             base_va: mr.addr as u64,
             mr_length: mr.len as u32,
-            mr_key: mr.lkey, // TODO: which key?
+            mr_key: key,
             pd_handler: mr.pd.handle,
             acc_flags: mr.acc_flags as u8,
             pgt_offset: 0,
