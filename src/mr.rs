@@ -11,7 +11,7 @@ use std::{
     mem, ptr,
 };
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct Mr {
     pub(crate) key: u32,
 }

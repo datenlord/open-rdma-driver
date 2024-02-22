@@ -153,7 +153,7 @@ impl Device {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub fn send(
+    pub fn send_data(
         &self,
         qp: Qp,
         dqp_ip: Ipv4Addr,
@@ -258,7 +258,7 @@ impl Device {
         Ok(())
     }
 
-    pub fn recv(&self, qp: Qp, total_len: u32) -> Result<(), Error> {
+    pub fn recv_data(&self, qp: Qp, total_len: u32) -> Result<(), Error> {
         let psn = self
             .0
             .qp
