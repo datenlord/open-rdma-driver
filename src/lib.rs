@@ -1,6 +1,6 @@
 use crate::{
     device::{
-        DeviceAdaptor, EmulatedDevice, HardwareDevice,
+        DeviceAdaptor, EmulatedDevice, HardwareDevice, QpType as DeviceQpType,
         ScatterGatherElement as DeviceScatterGatherElement,
         ScatterGatherList as DeviceScatterGatherList, ToCardCtrlRbDesc, ToCardWorkRbDesc,
         ToCardWorkRbDescCommonHeader, ToCardWorkRbDescOpcode, ToCardWorkRbDescRequest,
@@ -22,6 +22,7 @@ use std::{
     },
     thread::{self, Thread},
     time::Duration,
+    vec,
 };
 use thiserror::Error;
 
@@ -258,7 +259,14 @@ impl Device {
         Ok(())
     }
 
-    pub fn recv_data(&self, qp: Qp, total_len: u32) -> Result<(), Error> {
+    pub fn recv_data(
+        &self,
+        qp: Qp,
+        dqp_ip: Ipv4Addr,
+        mac_addr: [u8; 6],
+        dqpn: u32,
+        total_len: u32,
+    ) -> Result<(), Error> {
         let psn = self
             .0
             .qp
@@ -320,6 +328,85 @@ impl Device {
         if !result {
             return Err(Error::DeviceReturnFailed);
         }
+
+        let bth_pkey = [0; 2]; // TODO: get pkey
+        let bth_tver_pad_m_se = 0b00000000;
+        let bth_opcode = 0b00010001; // ACK
+        let bth_dqp = dqpn.to_le_bytes();
+        let bth_resv8 = 0;
+        let bth_psn = psn.to_le_bytes();
+        let bth_resv7_a = 0;
+        let aeth_msn = psn.to_le_bytes(); // TODO: update msn
+        let aeth_syn = 0;
+
+        let ack_pkt = [
+            // BTH bytes 0-3
+            bth_pkey[0],
+            bth_pkey[1],
+            bth_tver_pad_m_se,
+            bth_opcode,
+            // BTH bytes 4-7
+            bth_dqp[0],
+            bth_dqp[1],
+            bth_dqp[2],
+            bth_resv8,
+            // BTH bytes 8-11
+            bth_psn[0],
+            bth_psn[1],
+            bth_psn[2],
+            bth_resv7_a,
+            // AETH bytes 0-3
+            aeth_msn[0],
+            aeth_msn[1],
+            aeth_msn[2],
+            aeth_syn,
+        ];
+
+        let mr = self.reg_mr(
+            qp.pd.clone(),
+            ack_pkt.as_ptr() as u64,
+            ack_pkt.len() as u32,
+            4096,
+            0,
+        )?;
+
+        let sgl = vec![ScatterGatherElement {
+            laddr: ack_pkt.as_ptr() as u64,
+            lkey: mr.key.to_le_bytes(),
+            len: ack_pkt.len() as u32,
+        }];
+
+        let desc_header = ToCardWorkRbDescCommonHeader {
+            valid: true,
+            opcode: ToCardWorkRbDescOpcode::Send,
+            is_last: true,
+            is_first: true,
+            extra_segment_cnt: 0,
+            is_success_or_need_signal_cplt: false,
+            total_len: ack_pkt.len() as u32,
+        };
+
+        let desc = ToCardWorkRbDesc::Request(ToCardWorkRbDescRequest {
+            common_header: desc_header,
+            raddr: 0,
+            rkey: [0; 4],
+            dqp_ip,
+            pmtu: qp.pmtu.clone(),
+            flags: 0,
+            qp_type: DeviceQpType::RawPacket,
+            sge_cnt: sgl.len() as u8,
+            psn: 0,
+            mac_addr,
+            dqpn,
+            imm: [0; 4],
+            sgl: DeviceScatterGatherList::from(sgl),
+        });
+
+        self.0
+            .adaptor
+            .to_card_work_rb()
+            .push(desc)
+            .map_err(|_| Error::DeviceBusy)?;
 
         // TODO: update recv_psn
 
