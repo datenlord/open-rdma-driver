@@ -5,7 +5,7 @@ use crate::{
         ScatterGatherList as DeviceScatterGatherList, ToCardCtrlRbDesc, ToCardWorkRbDesc,
         ToCardWorkRbDescCommonHeader, ToCardWorkRbDescOpcode, ToCardWorkRbDescRequest,
     },
-    mr::MrCtx,
+    mr::{MrCtx, MrPgt},
     pd::PdCtx,
     qp::QpCtx,
 };
@@ -34,6 +34,10 @@ pub mod qp;
 
 pub use crate::{mr::Mr, pd::Pd, qp::Qp};
 
+const MR_KEY_IDX_BIT_CNT: usize = 10;
+const MR_TABLE_SIZE: usize = 64;
+const MR_PGT_SIZE: usize = 1024;
+
 #[derive(Clone)]
 pub struct Device(Arc<DeviceInner<dyn DeviceAdaptor>>);
 
@@ -41,8 +45,9 @@ struct DeviceInner<D: ?Sized> {
     #[allow(unused)]
     is_emulated: bool,
     pd: Mutex<HashMap<Pd, PdCtx>>,
-    mr: Mutex<HashMap<Mr, MrCtx>>,
+    mr_table: Mutex<[Option<MrCtx>; MR_TABLE_SIZE]>,
     qp: Mutex<HashMap<Qp, QpCtx>>,
+    mr_pgt: Mutex<MrPgt>,
     ctrl_op_ctx: Mutex<HashMap<[u8; 4], CtrlOpCtx>>,
     send_op_ctx: Mutex<HashMap<Qp, SendOpCtx>>,
     recv_op_ctx: Mutex<HashMap<Qp, RecvOpCtx>>,
@@ -90,18 +95,16 @@ struct MissingPkt<'a> {
 
 static NEXT_CTRL_OP_ID: AtomicU32 = AtomicU32::new(0);
 
-fn get_ctrl_op_id() -> [u8; 4] {
-    // TODO: make id unique between different processes
-    NEXT_CTRL_OP_ID.fetch_add(1, Ordering::AcqRel).to_le_bytes()
-}
-
 impl Device {
+    const MR_TABLE_EMPTY_ELEM: Option<MrCtx> = None;
+
     pub fn new_emulated() -> Result<Self, Error> {
         let inner = Arc::new(DeviceInner {
             is_emulated: true,
             pd: Mutex::new(HashMap::new()),
-            mr: Mutex::new(HashMap::new()),
+            mr_table: Mutex::new([Self::MR_TABLE_EMPTY_ELEM; MR_TABLE_SIZE]),
             qp: Mutex::new(HashMap::new()),
+            mr_pgt: Mutex::new(MrPgt::new()),
             ctrl_op_ctx: Mutex::new(HashMap::new()),
             send_op_ctx: Mutex::new(HashMap::new()),
             recv_op_ctx: Mutex::new(HashMap::new()),
@@ -125,8 +128,9 @@ impl Device {
         let inner = Arc::new(DeviceInner {
             is_emulated: false,
             pd: Mutex::new(HashMap::new()),
-            mr: Mutex::new(HashMap::new()),
+            mr_table: Mutex::new([Self::MR_TABLE_EMPTY_ELEM; MR_TABLE_SIZE]),
             qp: Mutex::new(HashMap::new()),
+            mr_pgt: Mutex::new(MrPgt::new()),
             send_op_ctx: Mutex::new(HashMap::new()),
             recv_op_ctx: Mutex::new(HashMap::new()),
             ctrl_op_ctx: Mutex::new(HashMap::new()),
@@ -484,6 +488,11 @@ impl RecvPktMap {
     }
 }
 
+fn get_ctrl_op_id() -> [u8; 4] {
+    // TODO: make id unique between different processes
+    NEXT_CTRL_OP_ID.fetch_add(1, Ordering::AcqRel).to_le_bytes()
+}
+
 impl Iterator for MissingPkt<'_> {
     type Item = Range<u32>;
 
@@ -535,4 +544,8 @@ pub enum Error {
     QpInUse,
     #[error("no available QP")]
     NoAvailableQp,
+    #[error("no available MR")]
+    NoAvailableMr,
+    #[error("allocate page table failed")]
+    AllocPageTable,
 }
