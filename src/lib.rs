@@ -2,8 +2,9 @@ use crate::{
     device::{
         DeviceAdaptor, EmulatedDevice, HardwareDevice, QpType as DeviceQpType,
         ScatterGatherElement as DeviceScatterGatherElement,
-        ScatterGatherList as DeviceScatterGatherList, ToCardCtrlRbDesc, ToCardWorkRbDesc,
-        ToCardWorkRbDescCommonHeader, ToCardWorkRbDescOpcode, ToCardWorkRbDescRequest,
+        ScatterGatherList as DeviceScatterGatherList, SoftwareDevice, ToCardCtrlRbDesc,
+        ToCardWorkRbDesc, ToCardWorkRbDescCommonHeader, ToCardWorkRbDescOpcode,
+        ToCardWorkRbDescRequest,
     },
     mr::{MrCtx, MrPgt},
     pd::PdCtx,
@@ -44,7 +45,7 @@ pub struct Device(Arc<DeviceInner<dyn DeviceAdaptor>>);
 
 struct DeviceInner<D: ?Sized> {
     #[allow(unused)]
-    is_emulated: bool,
+    is_hardware: bool,
     pd: Mutex<HashMap<Pd, PdCtx>>,
     mr_table: Mutex<[Option<MrCtx>; MR_TABLE_SIZE]>,
     qp: Mutex<HashMap<Qp, QpCtx>>,
@@ -99,35 +100,9 @@ static NEXT_CTRL_OP_ID: AtomicU32 = AtomicU32::new(0);
 impl Device {
     const MR_TABLE_EMPTY_ELEM: Option<MrCtx> = None;
 
-    pub fn new_emulated() -> Result<Self, Error> {
-        let inner = Arc::new(DeviceInner {
-            is_emulated: true,
-            pd: Mutex::new(HashMap::new()),
-            mr_table: Mutex::new([Self::MR_TABLE_EMPTY_ELEM; MR_TABLE_SIZE]),
-            qp: Mutex::new(HashMap::new()),
-            mr_pgt: Mutex::new(MrPgt::new()),
-            ctrl_op_ctx: Mutex::new(HashMap::new()),
-            send_op_ctx: Mutex::new(HashMap::new()),
-            recv_op_ctx: Mutex::new(HashMap::new()),
-            revc_pkt_map: RecvPktMap::new(0, 0),
-            check_recv_pkt_comp_thread: OnceLock::new(),
-            adaptor: EmulatedDevice::init().map_err(Error::Device)?,
-        });
-
-        let dev = Self(inner);
-
-        let dev_for_poll_ctrl_rb = dev.clone();
-        let dev_for_poll_work_rb = dev.clone();
-
-        thread::spawn(move || dev_for_poll_ctrl_rb.poll_ctrl_rb());
-        thread::spawn(move || dev_for_poll_work_rb.poll_work_rb());
-
-        Ok(dev)
-    }
-
     pub fn new_hardware() -> Result<Self, Error> {
         let inner = Arc::new(DeviceInner {
-            is_emulated: false,
+            is_hardware: true,
             pd: Mutex::new(HashMap::new()),
             mr_table: Mutex::new([Self::MR_TABLE_EMPTY_ELEM; MR_TABLE_SIZE]),
             qp: Mutex::new(HashMap::new()),
@@ -138,6 +113,62 @@ impl Device {
             revc_pkt_map: RecvPktMap::new(0, 0),
             check_recv_pkt_comp_thread: OnceLock::new(),
             adaptor: HardwareDevice::init().map_err(Error::Device)?,
+        });
+
+        let dev = Self(inner);
+
+        let dev_for_poll_ctrl_rb = dev.clone();
+        let dev_for_poll_work_rb = dev.clone();
+        let dev_for_check_recv_pkt_comp = dev.clone();
+
+        thread::spawn(move || dev_for_poll_ctrl_rb.poll_ctrl_rb());
+        thread::spawn(move || dev_for_poll_work_rb.poll_work_rb());
+        thread::spawn(move || dev_for_check_recv_pkt_comp.check_recv_pkt_comp());
+
+        Ok(dev)
+    }
+
+    pub fn new_software() -> Result<Self, Error> {
+        let inner = Arc::new(DeviceInner {
+            is_hardware: false,
+            pd: Mutex::new(HashMap::new()),
+            mr_table: Mutex::new([Self::MR_TABLE_EMPTY_ELEM; MR_TABLE_SIZE]),
+            qp: Mutex::new(HashMap::new()),
+            mr_pgt: Mutex::new(MrPgt::new()),
+            ctrl_op_ctx: Mutex::new(HashMap::new()),
+            send_op_ctx: Mutex::new(HashMap::new()),
+            recv_op_ctx: Mutex::new(HashMap::new()),
+            revc_pkt_map: RecvPktMap::new(0, 0),
+            check_recv_pkt_comp_thread: OnceLock::new(),
+            adaptor: SoftwareDevice::init().map_err(Error::Device)?,
+        });
+
+        let dev = Self(inner);
+
+        let dev_for_poll_ctrl_rb = dev.clone();
+        let dev_for_poll_work_rb = dev.clone();
+        let dev_for_check_recv_pkt_comp = dev.clone();
+
+        thread::spawn(move || dev_for_poll_ctrl_rb.poll_ctrl_rb());
+        thread::spawn(move || dev_for_poll_work_rb.poll_work_rb());
+        thread::spawn(move || dev_for_check_recv_pkt_comp.check_recv_pkt_comp());
+
+        Ok(dev)
+    }
+
+    pub fn new_emulated() -> Result<Self, Error> {
+        let inner = Arc::new(DeviceInner {
+            is_hardware: false,
+            pd: Mutex::new(HashMap::new()),
+            mr_table: Mutex::new([Self::MR_TABLE_EMPTY_ELEM; MR_TABLE_SIZE]),
+            qp: Mutex::new(HashMap::new()),
+            mr_pgt: Mutex::new(MrPgt::new()),
+            ctrl_op_ctx: Mutex::new(HashMap::new()),
+            send_op_ctx: Mutex::new(HashMap::new()),
+            recv_op_ctx: Mutex::new(HashMap::new()),
+            revc_pkt_map: RecvPktMap::new(0, 0),
+            check_recv_pkt_comp_thread: OnceLock::new(),
+            adaptor: EmulatedDevice::init().map_err(Error::Device)?,
         });
 
         let dev = Self(inner);

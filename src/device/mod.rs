@@ -2,9 +2,12 @@ use thiserror::Error;
 
 mod emulated;
 mod hardware;
+mod software;
 mod types;
 
-pub(crate) use self::{emulated::EmulatedDevice, hardware::HardwareDevice, types::*};
+pub(crate) use self::{
+    emulated::EmulatedDevice, hardware::HardwareDevice, software::SoftwareDevice, types::*,
+};
 
 /// Public interface for a device. Can be a real hardware device or a software emulation.
 pub(crate) trait DeviceAdaptor: Send + Sync {
