@@ -6,3 +6,4 @@ edition = "2021"
 [dependencies]
 thiserror = "1.0.56"
 rand = { version = "0.8.5", features = ["std", "std_rng"], default-features = false }
+shared_memory = "0.12.4"
