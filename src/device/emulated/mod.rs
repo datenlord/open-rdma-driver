@@ -2,12 +2,17 @@
 
 use super::{
     DeviceAdaptor, Overflowed, ToCardCtrlRbDesc, ToCardRb, ToCardWorkRbDesc, ToHostCtrlRbDesc,
-    ToHostRb, ToHostWorkRbDesc,
+    ToHostRb, ToHostWorkRbDesc, ToHostWorkRbDescBth,
 };
-use shared_memory::{Shmem, ShmemConf};
+
 use std::{error::Error, sync::Arc};
 
-const SHM_PATH: &str = "/PATH/TO/SHM";
+mod emulator_rpc_client;
+mod hw_consts;
+mod ringbuf;
+
+use emulator_rpc_client::RpcClient;
+use ringbuf::{Ringbuf, RingbufPointer, RINGBUF_DEPTH, RINGBUF_ELEMENT_SIZE, RINGBUF_PAGE_SIZE};
 
 /// An emulated device implementation of the device.
 pub(crate) struct EmulatedDevice {
@@ -15,39 +20,46 @@ pub(crate) struct EmulatedDevice {
     to_host_ctrl_rb: ToHostCtrlRb,
     to_card_work_rb: ToCardWorkRb,
     to_host_work_rb: ToHostWorkRb,
-    shm: Arc<Shmem>,
+    heap_mem_start_addr: usize,
+    rpc_client: Arc<RpcClient>,
 }
 
 struct ToCardCtrlRb {
-    shm: Arc<Shmem>,
+    rb: Ringbuf<RINGBUF_DEPTH, RINGBUF_ELEMENT_SIZE>,
+    rpc_client: Arc<RpcClient>,
 }
 
-struct ToHostCtrlRb {
-    shm: Arc<Shmem>,
-}
+struct ToHostCtrlRb {}
 
-struct ToCardWorkRb {
-    shm: Arc<Shmem>,
-}
+struct ToCardWorkRb {}
 
-struct ToHostWorkRb {
-    shm: Arc<Shmem>,
-}
+struct ToHostWorkRb {}
 
 impl EmulatedDevice {
     /// Initializing an emulated device.
     /// This function needs to be synchronized.
-    pub(crate) fn init() -> Result<Self, Box<dyn Error>> {
-        #[allow(clippy::arc_with_non_send_sync)]
-        let shm = Arc::new(ShmemConf::new().flink(SHM_PATH).open()?);
+    pub(crate) fn init(
+        server_port: u16,
+        heap_mem_start_addr: usize,
+    ) -> Result<Self, Box<dyn Error>> {
+        let rpc_client = Arc::new(RpcClient::new(server_port, heap_mem_start_addr)?);
 
+        #[allow(clippy::arc_with_non_send_sync)]
         Ok(Self {
-            to_card_ctrl_rb: ToCardCtrlRb { shm: shm.clone() },
-            to_host_ctrl_rb: ToHostCtrlRb { shm: shm.clone() },
-            to_card_work_rb: ToCardWorkRb { shm: shm.clone() },
-            to_host_work_rb: ToHostWorkRb { shm: shm.clone() },
-            shm,
+            to_card_ctrl_rb: ToCardCtrlRb {
+                rb: Ringbuf::new(),
+                rpc_client: rpc_client.clone(),
+            },
+            to_host_ctrl_rb: ToHostCtrlRb {},
+            to_card_work_rb: ToCardWorkRb {},
+            to_host_work_rb: ToHostWorkRb {},
+            heap_mem_start_addr,
+            rpc_client,
         })
+    }
+
+    fn get_pa_by_va(&self, va: usize) -> usize {
+        va - self.heap_mem_start_addr
     }
 }
 
@@ -68,36 +80,53 @@ impl DeviceAdaptor for EmulatedDevice {
         &self.to_host_work_rb
     }
 
-    fn read_csr(&self, _addr: usize) -> u32 {
-        todo!()
+    fn read_csr(&self, addr: usize) -> u32 {
+        self.rpc_client.read_csr(addr)
     }
 
-    fn write_csr(&self, _addr: usize, _data: u32) {
-        todo!()
+    fn write_csr(&self, addr: usize, data: u32) {
+        self.rpc_client.write_csr(addr, data);
     }
 }
 
 impl ToCardRb<ToCardCtrlRbDesc> for ToCardCtrlRb {
     fn push(&self, _desc: ToCardCtrlRbDesc) -> Result<(), Overflowed> {
-        todo!()
+        self.rpc_client.write_csr(
+            hw_consts::CSR_ADDR_CMD_REQ_QUEUE_HEAD,
+            self.rb.get_head().get_index_with_guard() as u32,
+        );
+        Ok(())
     }
 }
 
 impl ToHostRb<ToHostCtrlRbDesc> for ToHostCtrlRb {
     fn pop(&self) -> ToHostCtrlRbDesc {
-        todo!()
+        unsafe {
+            let mut a: Vec<ToHostCtrlRbDesc> = Vec::new();
+            a.reserve(1);
+            let p: *const ToHostCtrlRbDesc = a.as_ptr();
+            std::mem::transmute_copy(&*p)
+        }
+        // todo!()
     }
 }
 
 impl ToHostRb<ToHostWorkRbDesc> for ToHostWorkRb {
     fn pop(&self) -> ToHostWorkRbDesc {
-        todo!()
+        unsafe {
+            let mut a: Vec<ToHostWorkRbDesc> = Vec::new();
+            a.reserve(1);
+            let p = a.as_ptr();
+            std::mem::transmute_copy(&*p)
+        }
+        // todo!()
     }
 }
 
 impl ToCardRb<ToCardWorkRbDesc> for ToCardWorkRb {
     fn push(&self, _desc: ToCardWorkRbDesc) -> Result<(), Overflowed> {
-        todo!()
+        Ok(())
+        // todo!()
     }
 }
 

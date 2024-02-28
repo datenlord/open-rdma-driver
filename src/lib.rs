@@ -156,7 +156,7 @@ impl Device {
         Ok(dev)
     }
 
-    pub fn new_emulated() -> Result<Self, Error> {
+    pub fn new_emulated(server_port: u16, heap_mem_start_addr: usize) -> Result<Self, Error> {
         let inner = Arc::new(DeviceInner {
             is_hardware: false,
             pd: Mutex::new(HashMap::new()),
@@ -168,7 +168,8 @@ impl Device {
             recv_op_ctx: Mutex::new(HashMap::new()),
             revc_pkt_map: RecvPktMap::new(0, 0),
             check_recv_pkt_comp_thread: OnceLock::new(),
-            adaptor: EmulatedDevice::init().map_err(Error::Device)?,
+            adaptor: EmulatedDevice::init(server_port, heap_mem_start_addr)
+                .map_err(Error::Device)?,
         });
 
         let dev = Self(inner);

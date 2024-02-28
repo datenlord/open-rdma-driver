@@ -6,4 +6,12 @@ edition = "2021"
 [dependencies]
 thiserror = "1.0.56"
 rand = { version = "0.8.5", features = ["std", "std_rng"], default-features = false }
+serde_json = "1.0.114"
+serde = {version = "1.0.197", features = ["derive"]}
+
+[dev-dependencies]
 shared_memory = "0.12.4"
+ctor = "0.2.7"
+buddy_system_allocator = "0.9.1"
+libc = "0.2.153"
+lazy_static = "1.4.0"
