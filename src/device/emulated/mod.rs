@@ -4,15 +4,13 @@ use super::{
     DeviceAdaptor, Overflowed, ToCardCtrlRbDesc, ToCardRb, ToCardWorkRbDesc, ToHostCtrlRbDesc,
     ToHostRb, ToHostWorkRbDesc, ToHostWorkRbDescBth,
 };
-
+use crate::device::constants;
+use emulator_rpc_client::RpcClient;
+use ringbuf::{Ringbuf, RingbufPointer, RINGBUF_DEPTH, RINGBUF_ELEMENT_SIZE, RINGBUF_PAGE_SIZE};
 use std::{error::Error, net::SocketAddr, sync::Arc};
 
 mod emulator_rpc_client;
-mod hw_consts;
 mod ringbuf;
-
-use emulator_rpc_client::RpcClient;
-use ringbuf::{Ringbuf, RingbufPointer, RINGBUF_DEPTH, RINGBUF_ELEMENT_SIZE, RINGBUF_PAGE_SIZE};
 
 /// An emulated device implementation of the device.
 pub(crate) struct EmulatedDevice {
@@ -92,7 +90,7 @@ impl DeviceAdaptor for EmulatedDevice {
 impl ToCardRb<ToCardCtrlRbDesc> for ToCardCtrlRb {
     fn push(&self, _desc: ToCardCtrlRbDesc) -> Result<(), Overflowed> {
         self.rpc_client.write_csr(
-            hw_consts::CSR_ADDR_CMD_REQ_QUEUE_HEAD,
+            constants::CSR_ADDR_CMD_REQ_QUEUE_HEAD,
             self.rb.get_head().get_index_with_guard() as u32,
         );
         Ok(())

@@ -1,5 +1,6 @@
 use thiserror::Error;
 
+mod constants;
 mod emulated;
 mod hardware;
 mod software;
