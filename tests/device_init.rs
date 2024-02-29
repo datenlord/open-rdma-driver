@@ -44,7 +44,8 @@ fn init_global_allocator() {
 #[test]
 fn device_init() {
     let head_start_addr = unsafe { HEAP_START_ADDR };
-    let _emulated = Device::new_emulated(9875, head_start_addr).unwrap();
+    let _emulated =
+        Device::new_emulated("127.0.0.1:9875".parse().unwrap(), head_start_addr).unwrap();
     let pd = _emulated.alloc_pd().unwrap();
     let mr = _emulated.reg_mr(pd, 0, 100, 4096, 12).unwrap();
     _emulated.dereg_mr(mr).unwrap();

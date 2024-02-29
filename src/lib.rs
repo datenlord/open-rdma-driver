@@ -15,7 +15,7 @@ use std::{
     collections::{hash_map::Entry, HashMap},
     error::Error as StdError,
     mem,
-    net::Ipv4Addr,
+    net::{Ipv4Addr, SocketAddr},
     ops::Range,
     sync::{
         atomic::{AtomicU32, Ordering},
@@ -156,7 +156,10 @@ impl Device {
         Ok(dev)
     }
 
-    pub fn new_emulated(server_port: u16, heap_mem_start_addr: usize) -> Result<Self, Error> {
+    pub fn new_emulated(
+        rpc_server_addr: SocketAddr,
+        heap_mem_start_addr: usize,
+    ) -> Result<Self, Error> {
         let inner = Arc::new(DeviceInner {
             is_hardware: false,
             pd: Mutex::new(HashMap::new()),
@@ -168,7 +171,7 @@ impl Device {
             recv_op_ctx: Mutex::new(HashMap::new()),
             revc_pkt_map: RecvPktMap::new(0, 0),
             check_recv_pkt_comp_thread: OnceLock::new(),
-            adaptor: EmulatedDevice::init(server_port, heap_mem_start_addr)
+            adaptor: EmulatedDevice::init(rpc_server_addr, heap_mem_start_addr)
                 .map_err(Error::Device)?,
         });
 

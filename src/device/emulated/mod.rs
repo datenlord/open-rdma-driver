@@ -5,7 +5,7 @@ use super::{
     ToHostRb, ToHostWorkRbDesc, ToHostWorkRbDescBth,
 };
 
-use std::{error::Error, sync::Arc};
+use std::{error::Error, net::SocketAddr, sync::Arc};
 
 mod emulator_rpc_client;
 mod hw_consts;
@@ -39,10 +39,10 @@ impl EmulatedDevice {
     /// Initializing an emulated device.
     /// This function needs to be synchronized.
     pub(crate) fn init(
-        server_port: u16,
+        rpc_server_addr: SocketAddr,
         heap_mem_start_addr: usize,
     ) -> Result<Self, Box<dyn Error>> {
-        let rpc_client = Arc::new(RpcClient::new(server_port, heap_mem_start_addr)?);
+        let rpc_client = Arc::new(RpcClient::new(rpc_server_addr, heap_mem_start_addr)?);
 
         #[allow(clippy::arc_with_non_send_sync)]
         Ok(Self {
