@@ -1,5 +1,6 @@
 #![allow(unused)]
 
+use num_enum::TryFromPrimitive;
 use std::{net::Ipv4Addr, ops::Range};
 
 pub(crate) enum ToCardCtrlRbDesc {
@@ -200,4 +201,179 @@ pub(crate) enum ToHostWorkRbDescTransType {
     Ud = 0x03,
     Cnp = 0x04,
     Xrc = 0x05,
+}
+
+#[derive(TryFromPrimitive)]
+#[repr(u8)]
+enum CtrlRbDescOpcode {
+    UpdateMrTable = 0x00,
+    UpdatePageTable = 0x01,
+    QpManagement = 0x02,
+}
+
+impl ToCardCtrlRbDesc {
+    pub(super) fn write(self, dst: &mut [u8]) {
+        fn write_common_header(dst: &mut [u8], opcode: CtrlRbDescOpcode, op_id: [u8; 4]) {
+            // typedef struct {
+            //     Bit#(32)                userData;
+            //     ReservedZero#(20)       reserved1;
+            //     Bit#(4)                 extraSegmentCnt;
+            //     Bit#(6)                 opCode;
+            //     Bool                    isSuccessOrNeedSignalCplt;
+            //     Bool                    valid;
+            // } CmdQueueDescCommonHead deriving(Bits, FShow);
+
+            let valid = (true as u8) << 7;
+            let is_success_or_need_signal_cplt = (false as u8) << 6;
+            let opcode = opcode as u8;
+            dst[0] = valid | is_success_or_need_signal_cplt | opcode;
+
+            let extra_segment_cnt = 0 << 4;
+            dst[1] = extra_segment_cnt;
+
+            dst[2] = 0; // reserved1
+            dst[3] = 0; // reserved1
+
+            dst[4..8].copy_from_slice(&op_id);
+        }
+
+        fn write_update_mr_table(dst: &mut [u8], desc: ToCardCtrlRbDescUpdateMrTable) {
+            // typedef struct {
+            //     ReservedZero#(7)            reserved1;
+            //     Bit#(17)                    pgtOffset;
+            //     Bit#(8)                     accFlags;
+            //     Bit#(32)                    pdHandler;
+            //     Bit#(32)                    mrKey;
+            //     Bit#(32)                    mrLength;
+            //     Bit#(64)                    mrBaseVA;
+            //     CmdQueueDescCommonHead      commonHeader;
+            // } CmdQueueReqDescUpdateMrTable deriving(Bits, FShow);
+
+            // bits 0-7 are header bits
+
+            dst[8..16].copy_from_slice(&desc.addr.to_le_bytes());
+            dst[16..20].copy_from_slice(&desc.len.to_le_bytes());
+            dst[20..24].copy_from_slice(&desc.key.to_le_bytes());
+            dst[24..28].copy_from_slice(&desc.pd_hdl.to_le_bytes());
+            dst[28] = desc.acc_flags;
+
+            let pgt_offset = desc.pgt_offset.to_le_bytes();
+            dst[29] = pgt_offset[0];
+            dst[30] = pgt_offset[1];
+            dst[31] = pgt_offset[2] << 7; // reserved1 and last bit of pgt_offset
+        }
+
+        fn write_update_page_table(dst: &mut [u8], desc: ToCardCtrlRbDescUpdatePageTable) {
+            // typedef struct {
+            //     ReservedZero#(64)               reserved1;
+            //     Bit#(32)                        dmaReadLength;
+            //     Bit#(32)                        startIndex;
+            //     Bit#(64)                        dmaAddr;
+            //     CmdQueueDescCommonHead          commonHeader;
+            // } CmdQueueReqDescUpdatePGT deriving(Bits, FShow);
+
+            // bits 0-7 are header bits
+
+            dst[8..16].copy_from_slice(&desc.start_addr.to_le_bytes());
+            dst[16..20].copy_from_slice(&(desc.pgt_idx * 8).to_le_bytes());
+            dst[20..24].copy_from_slice(&(desc.pgte_cnt * 8).to_le_bytes());
+            dst[24..32].copy_from_slice(&[0; 8]);
+        }
+
+        fn write_qp_management(dst: &mut [u8], desc: ToCardCtrlRbDescQpManagement) {
+            // typedef struct {
+            //     ReservedZero#(104)              reserved1;      // 104 bits
+            //     ReservedZero#(5)                reserved2;      // 5   bits
+            //     PMTU                            pmtu;           // 3   bits
+            //     FlagsType#(MemAccessTypeFlag)   rqAccessFlags;  // 8   bits
+            //     ReservedZero#(4)                reserved3;      // 4   bits
+            //     TypeQP                          qpType;         // 4   bits
+            //     HandlerPD                       pdHandler;      // 32  bits
+            //     QPN                             qpn;            // 24  bits
+            //     ReservedZero#(6)                reserved4;      // 6   bits
+            //     Bool                            isError;        // 1   bit
+            //     Bool                            isValid;        // 1   bit
+            //     CmdQueueDescCommonHead          commonHeader;   // 64  bits
+            // } CmdQueueReqDescQpManagementSeg0 deriving(Bits, FShow);
+
+            // bits 0-7 are header bits
+
+            let is_valid = (desc.is_valid as u8) << 7;
+            let is_error = (false as u8) << 6;
+            dst[8] = is_valid | is_error; // and reserved4
+
+            let qpn = desc.qpn.to_le_bytes();
+            dst[9..12].copy_from_slice(&qpn[0..3]);
+
+            dst[12..16].copy_from_slice(&desc.pd_hdl.to_le_bytes());
+
+            dst[16] = (desc.qp_type as u8) << 4; // and reserved3
+
+            dst[17] = desc.rq_acc_flags;
+
+            dst[18] = (desc.pmtu as u8) << 3; // and reserved2
+
+            dst[19..32].copy_from_slice(&[0; 13]); // reserved1
+        }
+
+        match self {
+            ToCardCtrlRbDesc::UpdateMrTable(desc) => {
+                write_common_header(dst, CtrlRbDescOpcode::UpdateMrTable, desc.common.op_id);
+                write_update_mr_table(dst, desc);
+            }
+            ToCardCtrlRbDesc::UpdatePageTable(desc) => {
+                write_common_header(dst, CtrlRbDescOpcode::UpdatePageTable, desc.common.op_id);
+                write_update_page_table(dst, desc);
+            }
+            ToCardCtrlRbDesc::QpManagement(desc) => {
+                write_common_header(dst, CtrlRbDescOpcode::QpManagement, desc.common.op_id);
+                write_qp_management(dst, desc);
+            }
+        }
+    }
+
+    pub(super) fn serialized_desc_cnt(&self) -> usize {
+        1
+    }
+}
+
+impl ToHostCtrlRbDesc {
+    pub(super) fn read(src: &[u8]) -> ToHostCtrlRbDesc {
+        // typedef struct {
+        //     Bit#(32)                userData;
+        //     ReservedZero#(20)       reserved1;
+        //     Bit#(4)                 extraSegmentCnt;
+        //     Bit#(6)                 opCode;
+        //     Bool                    isSuccessOrNeedSignalCplt;
+        //     Bool                    valid;
+        // } CmdQueueDescCommonHead deriving(Bits, FShow);
+
+        let valid = (src[0] >> 7) != 0;
+        assert!(valid);
+
+        let extra_segment_cnt = src[1] >> 4;
+        assert!(extra_segment_cnt == 0);
+
+        let is_success = (src[0] >> 6) != 0;
+        let opcode = CtrlRbDescOpcode::try_from(src[0] & 0b00111111).unwrap();
+        let op_id = src[4..8].try_into().unwrap();
+
+        let common = ToHostCtrlRbDescCommon { op_id, is_success };
+
+        match opcode {
+            CtrlRbDescOpcode::UpdateMrTable => {
+                ToHostCtrlRbDesc::UpdateMrTable(ToHostCtrlRbDescUpdateMrTable { common })
+            }
+            CtrlRbDescOpcode::UpdatePageTable => {
+                ToHostCtrlRbDesc::UpdatePageTable(ToHostCtrlRbDescUpdatePageTable { common })
+            }
+            CtrlRbDescOpcode::QpManagement => {
+                ToHostCtrlRbDesc::QpManagement(ToHostCtrlRbDescQpManagement { common })
+            }
+        }
+    }
+
+    pub(super) fn serialized_desc_cnt(&self) -> usize {
+        1
+    }
 }
