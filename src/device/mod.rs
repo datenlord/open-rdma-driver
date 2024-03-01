@@ -21,6 +21,8 @@ pub(crate) trait DeviceAdaptor: Send + Sync {
 
     fn read_csr(&self, addr: usize) -> u32;
     fn write_csr(&self, addr: usize, data: u32);
+
+    fn get_phys_addr(&self, virt_addr: usize) -> usize;
 }
 
 /// Generic interface for a to-card ring buffer.

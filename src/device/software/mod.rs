@@ -54,6 +54,10 @@ impl DeviceAdaptor for SoftwareDevice {
     fn write_csr(&self, _addr: usize, _data: u32) {
         todo!()
     }
+
+    fn get_phys_addr(&self, virt_addr: usize) -> usize {
+        virt_addr
+    }
 }
 
 impl ToCardRb<ToCardCtrlRbDesc> for ToCardCtrlRb {

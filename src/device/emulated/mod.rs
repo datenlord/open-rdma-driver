@@ -86,10 +86,6 @@ impl EmulatedDevice {
             rpc_client,
         })
     }
-
-    fn get_pa_by_va(&self, va: usize) -> usize {
-        va - self.heap_mem_start_addr
-    }
 }
 
 impl DeviceAdaptor for EmulatedDevice {
@@ -115,6 +111,10 @@ impl DeviceAdaptor for EmulatedDevice {
 
     fn write_csr(&self, addr: usize, data: u32) {
         self.rpc_client.write_csr(addr, data);
+    }
+
+    fn get_phys_addr(&self, virt_addr: usize) -> usize {
+        virt_addr - self.heap_mem_start_addr
     }
 }
 
