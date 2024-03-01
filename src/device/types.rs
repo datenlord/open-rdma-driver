@@ -520,7 +520,7 @@ impl ToCardWorkRbDesc {
         dst[24..32].copy_from_slice(&[0; 8]); // reserved1
     }
 
-    fn write_1(&self, dst: &mut [u8]) {
+    pub(super) fn write_1(&self, dst: &mut [u8]) {
         // typedef struct {
         //     ReservedZero#(64)       reserved1;          // 64 bits
 
@@ -587,7 +587,7 @@ impl ToCardWorkRbDesc {
         dst[28..32].copy_from_slice(&[0; 4]); // reserved1
     }
 
-    fn write_2(&self, dst: &mut [u8]) {
+    pub(super) fn write_2(&self, dst: &mut [u8]) {
         // typedef struct {
         //     ADDR   laddr;         // 64 bits
         //     Length len;           // 32 bits
@@ -618,7 +618,7 @@ impl ToCardWorkRbDesc {
         }
     }
 
-    fn write_3(&self, dst: &mut [u8]) {
+    pub(super) fn write_3(&self, dst: &mut [u8]) {
         // typedef struct {
         //     ADDR   laddr;         // 64 bits
         //     Length len;           // 32 bits

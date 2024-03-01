@@ -37,9 +37,23 @@ struct ToHostCtrlRb {
     rpc_client: Arc<RpcClient>,
 }
 
-struct ToCardWorkRb {}
+struct ToCardWorkRb {
+    rb: Ringbuf<
+        { constants::RINGBUF_DEPTH },
+        { constants::RINGBUF_ELEM_SIZE },
+        { constants::RINGBUF_PAGE_SIZE },
+    >,
+    rpc_client: Arc<RpcClient>,
+}
 
-struct ToHostWorkRb {}
+struct ToHostWorkRb {
+    rb: Ringbuf<
+        { constants::RINGBUF_DEPTH },
+        { constants::RINGBUF_ELEM_SIZE },
+        { constants::RINGBUF_PAGE_SIZE },
+    >,
+    rpc_client: Arc<RpcClient>,
+}
 
 impl EmulatedDevice {
     /// Initializing an emulated device.
@@ -60,8 +74,14 @@ impl EmulatedDevice {
                 rb: Ringbuf::new(),
                 rpc_client: rpc_client.clone(),
             },
-            to_card_work_rb: ToCardWorkRb {},
-            to_host_work_rb: ToHostWorkRb {},
+            to_card_work_rb: ToCardWorkRb {
+                rb: Ringbuf::new(),
+                rpc_client: rpc_client.clone(),
+            },
+            to_host_work_rb: ToHostWorkRb {
+                rb: Ringbuf::new(),
+                rpc_client: rpc_client.clone(),
+            },
             heap_mem_start_addr,
             rpc_client,
         })
@@ -126,7 +146,7 @@ impl ToHostRb<ToHostCtrlRbDesc> for ToHostCtrlRb {
 
             let Some(mem) = reader.next() else {
                 drop(reader); // reader should be dropped to update the tail pointer
-                thread::sleep(Duration::from_millis(1));
+                thread::sleep(Duration::from_millis(1)); // sleep for a while
                 continue;
             };
 
@@ -143,15 +163,60 @@ impl ToHostRb<ToHostCtrlRbDesc> for ToHostCtrlRb {
     }
 }
 
-impl ToHostRb<ToHostWorkRbDesc> for ToHostWorkRb {
-    fn pop(&self) -> ToHostWorkRbDesc {
-        todo!()
+impl ToCardRb<ToCardWorkRbDesc> for ToCardWorkRb {
+    fn push(&self, desc: ToCardWorkRbDesc) -> Result<(), Overflowed> {
+        let desc_cnt = desc.serialized_desc_cnt();
+
+        let Some(mut writer) = self.rb.write(desc_cnt) else {
+            return Err(Overflowed);
+        };
+
+        desc.write_0(writer.next().unwrap());
+        desc.write_1(writer.next().unwrap());
+        desc.write_2(writer.next().unwrap());
+
+        if desc_cnt == 4 {
+            desc.write_3(writer.next().unwrap());
+        }
+
+        drop(writer); // writer should be dropped to update the head pointer
+
+        self.rpc_client
+            .write_csr(constants::CSR_ADDR_SEND_QUEUE_HEAD, self.rb.head() as u32);
+
+        Ok(())
     }
 }
 
-impl ToCardRb<ToCardWorkRbDesc> for ToCardWorkRb {
-    fn push(&self, _desc: ToCardWorkRbDesc) -> Result<(), Overflowed> {
-        todo!()
+impl ToHostRb<ToHostWorkRbDesc> for ToHostWorkRb {
+    fn pop(&self) -> ToHostWorkRbDesc {
+        loop {
+            let mut reader = self.rb.read();
+
+            let Some(mem) = reader.next() else {
+                drop(reader); // reader should be dropped to update the tail pointer
+                thread::sleep(Duration::from_millis(1)); // sleep for a while
+                continue;
+            };
+
+            let mut read_res = ToHostWorkRbDesc::read(mem);
+
+            let desc = loop {
+                match read_res {
+                    Ok(desc) => break desc,
+                    Err(desc) => read_res = desc.read(mem),
+                }
+            };
+
+            drop(reader); // reader should be dropped to update the tail pointer
+
+            self.rpc_client.write_csr(
+                constants::CSR_ADDR_META_REPORT_QUEUE_TAIL,
+                self.rb.tail() as u32,
+            );
+
+            return desc;
+        }
     }
 }
 
