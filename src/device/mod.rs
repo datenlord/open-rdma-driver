@@ -5,6 +5,7 @@ mod emulated;
 mod hardware;
 mod software;
 mod types;
+mod types_new;
 
 pub(crate) use self::{
     emulated::EmulatedDevice, hardware::HardwareDevice, software::SoftwareDevice, types::*,
