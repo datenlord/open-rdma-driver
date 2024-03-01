@@ -1,16 +1,13 @@
 #![allow(unused)]
 
 use super::{
-    DeviceAdaptor, Overflowed, ToCardCtrlRbDesc, ToCardRb, ToCardWorkRbDesc, ToHostCtrlRbDesc,
-    ToHostRb, ToHostWorkRbDesc, ToHostWorkRbDescBth,
+    constants, ringbuf::Ringbuf, DeviceAdaptor, Overflowed, ToCardCtrlRbDesc, ToCardRb,
+    ToCardWorkRbDesc, ToHostCtrlRbDesc, ToHostRb, ToHostWorkRbDesc, ToHostWorkRbDescBth,
 };
-use crate::device::constants;
 use emulator_rpc_client::RpcClient;
-use ringbuf::{Ringbuf, RingbufPointer, RINGBUF_DEPTH, RINGBUF_ELEMENT_SIZE, RINGBUF_PAGE_SIZE};
 use std::{error::Error, net::SocketAddr, sync::Arc};
 
 mod emulator_rpc_client;
-mod ringbuf;
 
 /// An emulated device implementation of the device.
 pub(crate) struct EmulatedDevice {
@@ -19,11 +16,15 @@ pub(crate) struct EmulatedDevice {
     to_card_work_rb: ToCardWorkRb,
     to_host_work_rb: ToHostWorkRb,
     heap_mem_start_addr: usize,
-    rpc_client: Arc<RpcClient>,
+    rpc_client: Arc<RpcClient>, // TODO: remove Arc
 }
 
 struct ToCardCtrlRb {
-    rb: Ringbuf<RINGBUF_DEPTH, RINGBUF_ELEMENT_SIZE>,
+    rb: Ringbuf<
+        { constants::RINGBUF_DEPTH },
+        { constants::RINGBUF_ELEM_SIZE },
+        { constants::RINGBUF_PAGE_SIZE },
+    >,
     rpc_client: Arc<RpcClient>,
 }
 
@@ -91,7 +92,7 @@ impl ToCardRb<ToCardCtrlRbDesc> for ToCardCtrlRb {
     fn push(&self, _desc: ToCardCtrlRbDesc) -> Result<(), Overflowed> {
         self.rpc_client.write_csr(
             constants::CSR_ADDR_CMD_REQ_QUEUE_HEAD,
-            self.rb.get_head().get_index_with_guard() as u32,
+            self.rb.head() as u32,
         );
         Ok(())
     }

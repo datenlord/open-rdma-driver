@@ -52,3 +52,7 @@ pub(super) const CSR_ADDR_META_REPORT_QUEUE_ADDR_LOW: usize =
     generate_csr_addr(false, 1, CsrIndex::CsrIdxRbBaseAddrLow);
 pub(super) const CSR_ADDR_META_REPORT_QUEUE_ADDR_HIGH: usize =
     generate_csr_addr(false, 1, CsrIndex::CsrIdxRbBaseAddrHigh);
+
+pub(super) const RINGBUF_DEPTH: usize = 128;
+pub(super) const RINGBUF_ELEM_SIZE: usize = 32;
+pub(super) const RINGBUF_PAGE_SIZE: usize = 4096;

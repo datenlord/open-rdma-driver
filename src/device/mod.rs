@@ -3,6 +3,7 @@ use thiserror::Error;
 mod constants;
 mod emulated;
 mod hardware;
+mod ringbuf;
 mod software;
 mod types;
 mod types_new;
