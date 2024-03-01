@@ -41,8 +41,6 @@ const MR_PGT_SIZE: usize = 1024;
 pub struct Device(Arc<DeviceInner<dyn DeviceAdaptor>>);
 
 struct DeviceInner<D: ?Sized> {
-    #[allow(unused)]
-    is_hardware: bool,
     pd: Mutex<HashMap<Pd, PdCtx>>,
     mr_table: Mutex<[Option<MrCtx>; MR_TABLE_SIZE]>,
     qp: Mutex<HashMap<Qp, QpCtx>>,
@@ -99,7 +97,6 @@ impl Device {
 
     pub fn new_hardware() -> Result<Self, Error> {
         let inner = Arc::new(DeviceInner {
-            is_hardware: true,
             pd: Mutex::new(HashMap::new()),
             mr_table: Mutex::new([Self::MR_TABLE_EMPTY_ELEM; MR_TABLE_SIZE]),
             qp: Mutex::new(HashMap::new()),
@@ -127,7 +124,6 @@ impl Device {
 
     pub fn new_software() -> Result<Self, Error> {
         let inner = Arc::new(DeviceInner {
-            is_hardware: false,
             pd: Mutex::new(HashMap::new()),
             mr_table: Mutex::new([Self::MR_TABLE_EMPTY_ELEM; MR_TABLE_SIZE]),
             qp: Mutex::new(HashMap::new()),
@@ -158,7 +154,6 @@ impl Device {
         heap_mem_start_addr: usize,
     ) -> Result<Self, Error> {
         let inner = Arc::new(DeviceInner {
-            is_hardware: false,
             pd: Mutex::new(HashMap::new()),
             mr_table: Mutex::new([Self::MR_TABLE_EMPTY_ELEM; MR_TABLE_SIZE]),
             qp: Mutex::new(HashMap::new()),

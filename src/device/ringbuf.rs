@@ -1,5 +1,3 @@
-#![allow(unused)]
-
 use std::sync::{
     atomic::{AtomicUsize, Ordering},
     Mutex, MutexGuard,
@@ -7,7 +5,6 @@ use std::sync::{
 
 pub(super) struct Ringbuf<const DEPTH: usize, const ELEM_SIZE: usize, const PAGE_SIZE: usize> {
     buf: Mutex<Box<[u8]>>,
-    start_pa: usize,
     align_offset: usize,
     head: AtomicUsize,
     tail: AtomicUsize,
@@ -39,30 +36,28 @@ pub(super) struct RingbufReader<
     read_cnt: usize,
 }
 
-const fn is_power_of_2(v: usize) -> bool {
+const fn _is_power_of_2(v: usize) -> bool {
     (v & (v - 1)) == 0
 }
 
 impl<const DEPTH: usize, const ELEM_SIZE: usize, const PAGE_SIZE: usize>
     Ringbuf<DEPTH, ELEM_SIZE, PAGE_SIZE>
 {
-    const PTR_GUARD_MASK: usize = DEPTH;
+    const _PTR_GUARD_MASK: usize = DEPTH;
     const PTR_IDX_MASK: usize = DEPTH - 1;
 
-    const _IS_DEPTH_POWER_OF_2: () = assert!(is_power_of_2(DEPTH), "invalid ringbuf depth");
-    const _IS_ELEM_SIZE_POWER_OF_2: () = assert!(is_power_of_2(ELEM_SIZE), "invalid element size");
+    const _IS_DEPTH_POWER_OF_2: () = assert!(_is_power_of_2(DEPTH), "invalid ringbuf depth");
+    const _IS_ELEM_SIZE_POWER_OF_2: () = assert!(_is_power_of_2(ELEM_SIZE), "invalid element size");
     const _IS_RINGBUF_SIZE_VALID: () =
         assert!(DEPTH * ELEM_SIZE >= PAGE_SIZE, "invalid ringbuf size");
 
     pub(super) fn new() -> Self {
         let buf = Mutex::new(vec![0; DEPTH * ELEM_SIZE + PAGE_SIZE].into_boxed_slice());
         let buf_addr = buf.lock().unwrap().as_ref().as_ptr() as usize;
-        let start_pa = (buf_addr + PAGE_SIZE) & !(PAGE_SIZE - 1);
         let align_offset = buf_addr & (PAGE_SIZE - 1);
 
         Self {
             buf,
-            start_pa,
             align_offset,
             head: AtomicUsize::new(0),
             tail: AtomicUsize::new(0),

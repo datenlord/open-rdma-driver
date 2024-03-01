@@ -631,7 +631,7 @@ impl ToCardWorkRbDesc {
         // } SendQueueReqDescVariableLenSGE deriving(Bits, FShow);
 
         let (sge2, sge3) = match self {
-            ToCardWorkRbDesc::Read(desc) => (None, None),
+            ToCardWorkRbDesc::Read(_) => (None, None),
             ToCardWorkRbDesc::Write(desc) => (desc.sge2.as_ref(), desc.sge3.as_ref()),
             ToCardWorkRbDesc::WriteWithImm(desc) => (desc.sge2.as_ref(), desc.sge3.as_ref()),
         };
@@ -831,8 +831,9 @@ impl ToHostWorkRbDesc {
 }
 
 impl IncompleteToHostWorkRbDesc {
+    #[allow(unreachable_code)]
     pub(super) fn read(
-        mut self,
+        self,
         src: &[u8],
     ) -> Result<ToHostWorkRbDesc, IncompleteToHostWorkRbDesc> {
         fn read_second_reth(src: &[u8]) -> (u64, u32) {
