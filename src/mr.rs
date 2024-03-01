@@ -1,6 +1,6 @@
 use crate::{
     device::{
-        CtrlRbDescCommonHeader, CtrlRbDescOpcode, ToCardCtrlRbDesc, ToCardCtrlRbDescUpdateMrTable,
+        ToCardCtrlRbDesc, ToCardCtrlRbDescCommon, ToCardCtrlRbDescUpdateMrTable,
         ToCardCtrlRbDescUpdatePageTable,
     },
     Device, Error, Pd,
@@ -16,6 +16,7 @@ pub struct Mr {
     pub(crate) key: u32,
 }
 
+#[allow(unused)]
 pub(crate) struct MrCtx {
     pub(crate) key: u32,
     pub(crate) pd: Pd,
@@ -62,36 +63,28 @@ impl Device {
 
         let pd_ctx = pd_pool.get_mut(&pd).ok_or(Error::InvalidPd)?;
 
-        let mr_pgt_elem_len = len.div_ceil(pg_size) as usize;
-        let pgt_offset = mr_pgt.alloc(mr_pgt_elem_len)?;
+        let pgte_cnt = len.div_ceil(pg_size) as usize;
+        let pgt_offset = mr_pgt.alloc(pgte_cnt)?;
 
-        for pg_idx in 0..mr_pgt_elem_len {
-            let va = addr + (pg_size as usize * pg_idx) as u64;
+        for pgt_idx in 0..pgte_cnt {
+            let va = addr + (pg_size as usize * pgt_idx) as u64;
             let pa = va; // TODO: get physical address
-            mr_pgt.table[pgt_offset + pg_idx] = pa;
+            mr_pgt.table[pgt_offset + pgt_idx] = pa;
         }
 
-        let ctrl_op_id = super::get_ctrl_op_id();
-
-        let desc_header = CtrlRbDescCommonHeader {
-            valid: true,
-            opcode: CtrlRbDescOpcode::UpdatePageTable,
-            extra_segment_cnt: 0,
-            is_success_or_need_signal_cplt: false,
-            user_data: ctrl_op_id,
-        };
+        let op_id = super::get_ctrl_op_id();
 
         let desc = ToCardCtrlRbDesc::UpdatePageTable(ToCardCtrlRbDescUpdatePageTable {
-            common_header: desc_header,
-            dma_addr: mr_pgt.table.as_ptr() as u64, // TODO: get physical address
-            start_index: pgt_offset as u32,
-            dma_read_length: mr_pgt_elem_len as u32, // TODO: length in bytes or u64?
+            common: ToCardCtrlRbDescCommon { op_id },
+            start_addr: mr_pgt.table.as_ptr() as u64,
+            pgt_idx: pgt_offset as u32,
+            pgte_cnt: pgte_cnt as u32,
         });
 
-        let res = self.do_ctrl_op(ctrl_op_id, desc)?;
+        let res = self.do_ctrl_op(op_id, desc)?;
 
         if !res {
-            mr_pgt.dealloc(pgt_offset, mr_pgt_elem_len);
+            mr_pgt.dealloc(pgt_offset, pgte_cnt);
             return Err(Error::DeviceReturnFailed);
         }
 
@@ -110,27 +103,19 @@ impl Device {
             pg_size,
         };
 
-        let ctrl_op_id = super::get_ctrl_op_id();
-
-        let desc_header = CtrlRbDescCommonHeader {
-            valid: true,
-            opcode: CtrlRbDescOpcode::UpdateMrTable,
-            extra_segment_cnt: 0,
-            is_success_or_need_signal_cplt: false,
-            user_data: ctrl_op_id,
-        };
+        let op_id = super::get_ctrl_op_id();
 
         let desc = ToCardCtrlRbDesc::UpdateMrTable(ToCardCtrlRbDescUpdateMrTable {
-            common_header: desc_header,
-            base_va: mr_ctx.va,
-            mr_length: mr_ctx.len,
-            mr_key: mr_ctx.key,
-            pd_handler: mr_ctx.pd.handle,
-            acc_flags: mr_ctx.acc_flags,
-            pgt_offset: pgt_offset as u32, // TODO: missing page size?
+            common: ToCardCtrlRbDescCommon { op_id },
+            addr,
+            len,
+            key,
+            pd_hdl: mr_ctx.pd.handle,
+            acc_flags,
+            pgt_offset: pgt_offset as u32,
         });
 
-        let res = self.do_ctrl_op(ctrl_op_id, desc)?;
+        let res = self.do_ctrl_op(op_id, desc)?;
 
         if !res {
             return Err(Error::DeviceReturnFailed);
@@ -158,27 +143,37 @@ impl Device {
 
         let pd_ctx = pd_pool.get_mut(&mr_ctx.pd).ok_or(Error::InvalidPd)?;
 
-        let ctrl_op_id = super::get_ctrl_op_id();
+        let op_id = super::get_ctrl_op_id();
 
-        let desc_header = CtrlRbDescCommonHeader {
-            valid: true,
-            opcode: CtrlRbDescOpcode::UpdateMrTable,
-            extra_segment_cnt: 0,
-            is_success_or_need_signal_cplt: false,
-            user_data: ctrl_op_id,
-        };
+        // let desc_header = CtrlRbDescCommonHeader {
+        //     valid: true,
+        //     opcode: CtrlRbDescOpcode::UpdateMrTable,
+        //     extra_segment_cnt: 0,
+        //     is_success_or_need_signal_cplt: false,
+        //     user_data: ctrl_op_id,
+        // };
+
+        // let desc = ToCardCtrlRbDesc::UpdateMrTable(ToCardCtrlRbDescUpdateMrTable {
+        //     common_header: desc_header,
+        //     base_va: 0,
+        //     mr_length: 0,
+        //     mr_key: mr.key,
+        //     pd_handler: 0,
+        //     acc_flags: 0,
+        //     pgt_offset: 0,
+        // });
 
         let desc = ToCardCtrlRbDesc::UpdateMrTable(ToCardCtrlRbDescUpdateMrTable {
-            common_header: desc_header,
-            base_va: 0,
-            mr_length: 0,
-            mr_key: mr.key,
-            pd_handler: 0,
+            common: ToCardCtrlRbDescCommon { op_id },
+            addr: 0,
+            len: 0,
+            key: mr.key,
+            pd_hdl: 0,
             acc_flags: 0,
             pgt_offset: 0,
         });
 
-        let res = self.do_ctrl_op(ctrl_op_id, desc)?;
+        let res = self.do_ctrl_op(op_id, desc)?;
 
         if !res {
             return Err(Error::DeviceReturnFailed);

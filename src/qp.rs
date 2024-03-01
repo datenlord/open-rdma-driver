@@ -1,7 +1,7 @@
 use crate::{
     device::{
-        CtrlRbDescCommonHeader, CtrlRbDescOpcode, Pmtu as DevicePmtu, QpType as DeviceQpType,
-        ToCardCtrlRbDesc, ToCardCtrlRbDescQpManagement,
+        Pmtu as DevicePmtu, QpType as DeviceQpType, ToCardCtrlRbDesc, ToCardCtrlRbDescCommon,
+        ToCardCtrlRbDescQpManagement,
     },
     Device, Error, Pd,
 };
@@ -15,6 +15,7 @@ use std::{
 const QP_MAX_CNT: usize = 1;
 static QP_AVAILABLITY: [AtomicBool; QP_MAX_CNT] = unsafe { mem::transmute([true; QP_MAX_CNT]) };
 
+#[allow(unused)]
 #[derive(Debug, Clone)]
 pub struct Qp {
     pub(crate) handle: u32,
@@ -74,28 +75,19 @@ impl Device {
 
         let pd_ctx = pd_pool.get_mut(&qp.pd).ok_or(Error::InvalidPd)?;
 
-        let id = super::get_ctrl_op_id();
-
-        let desc_header = CtrlRbDescCommonHeader {
-            valid: true,
-            opcode: CtrlRbDescOpcode::QpManagement,
-            extra_segment_cnt: 0,
-            is_success_or_need_signal_cplt: false,
-            user_data: id,
-        };
+        let op_id = super::get_ctrl_op_id();
 
         let desc = ToCardCtrlRbDesc::QpManagement(ToCardCtrlRbDescQpManagement {
-            common_header: desc_header,
+            common: ToCardCtrlRbDescCommon { op_id },
             is_valid: true,
-            is_error: false,
             qpn: qp.qpn,
-            pd_handler: qp.pd.handle,
+            pd_hdl: qp.pd.handle,
             qp_type: qp.qp_type.clone(),
-            rq_access_flags: qp.rq_acc_flags,
+            rq_acc_flags,
             pmtu: qp.pmtu.clone(),
         });
 
-        let res = self.do_ctrl_op(id, desc)?;
+        let res = self.do_ctrl_op(op_id, desc)?;
 
         if !res {
             return Err(Error::DeviceReturnFailed);
@@ -126,28 +118,19 @@ impl Device {
 
         let pd_ctx = pd_pool.get_mut(&qp.pd).ok_or(Error::InvalidPd)?;
 
-        let id = super::get_ctrl_op_id();
-
-        let desc_header = CtrlRbDescCommonHeader {
-            valid: true,
-            opcode: CtrlRbDescOpcode::QpManagement,
-            extra_segment_cnt: 0,
-            is_success_or_need_signal_cplt: false,
-            user_data: id,
-        };
+        let op_id = super::get_ctrl_op_id();
 
         let desc = ToCardCtrlRbDesc::QpManagement(ToCardCtrlRbDescQpManagement {
-            common_header: desc_header,
+            common: ToCardCtrlRbDescCommon { op_id },
             is_valid: false,
-            is_error: false,
             qpn: qp.qpn,
-            pd_handler: 0,
+            pd_hdl: 0,
             qp_type: qp.qp_type.clone(),
-            rq_access_flags: 0,
+            rq_acc_flags: 0,
             pmtu: qp.pmtu.clone(),
         });
 
-        let res = self.do_ctrl_op(id, desc)?;
+        let res = self.do_ctrl_op(op_id, desc)?;
 
         if !res {
             return Err(Error::DeviceReturnFailed);

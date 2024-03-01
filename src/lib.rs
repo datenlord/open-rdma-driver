@@ -1,17 +1,14 @@
 use crate::{
     device::{
-        DeviceAdaptor, EmulatedDevice, HardwareDevice, QpType as DeviceQpType,
-        ScatterGatherElement as DeviceScatterGatherElement,
-        ScatterGatherList as DeviceScatterGatherList, SoftwareDevice, ToCardCtrlRbDesc,
-        ToCardWorkRbDesc, ToCardWorkRbDescCommonHeader, ToCardWorkRbDescOpcode,
-        ToCardWorkRbDescRequest,
+        DeviceAdaptor, EmulatedDevice, HardwareDevice, SoftwareDevice, ToCardCtrlRbDesc,
+        ToCardCtrlRbDescSge as DeviceSge, ToCardWorkRbDesc,
     },
     mr::{MrCtx, MrPgt},
     pd::PdCtx,
     qp::QpCtx,
 };
+use device::{ToCardWorkRbDescCommon, ToCardWorkRbDescWrite};
 use std::{
-    array,
     collections::{hash_map::Entry, HashMap},
     error::Error as StdError,
     mem,
@@ -58,10 +55,10 @@ struct DeviceInner<D: ?Sized> {
     adaptor: D,
 }
 
-pub struct ScatterGatherElement {
-    laddr: u64,
-    lkey: [u8; 4],
-    len: u32,
+pub struct Sge {
+    pub addr: u64,
+    pub len: u32,
+    pub key: u32,
 }
 
 struct CtrlOpCtx {
@@ -196,9 +193,12 @@ impl Device {
         mac_addr: [u8; 6],
         dqpn: u32,
         raddr: u64,
-        rkey: [u8; 4],
+        rkey: u32,
         flags: u8,
-        sgl: Vec<ScatterGatherElement>,
+        sge0: Sge,
+        sge1: Option<Sge>,
+        sge2: Option<Sge>,
+        sge3: Option<Sge>,
     ) -> Result<(), Error> {
         let psn = self
             .0
@@ -209,30 +209,28 @@ impl Device {
             .ok_or(Error::InvalidQp)?
             .send_psn;
 
-        let desc_header = ToCardWorkRbDescCommonHeader {
-            valid: true,
-            opcode: ToCardWorkRbDescOpcode::Send,
-            is_last: true,
-            is_first: true,
-            extra_segment_cnt: 0,
-            is_success_or_need_signal_cplt: false,
-            total_len: sgl.iter().fold(0, |acc, elem| acc + elem.len),
-        };
-
-        let desc = ToCardWorkRbDesc::Request(ToCardWorkRbDescRequest {
-            common_header: desc_header,
-            raddr,
-            rkey,
-            dqp_ip,
-            pmtu: qp.pmtu.clone(),
-            flags,
-            qp_type: qp.qp_type.clone(),
-            sge_cnt: sgl.len() as u8,
-            psn, // TODO: calculate psn
-            mac_addr,
-            dqpn,
-            imm: [0; 4],
-            sgl: DeviceScatterGatherList::from(sgl),
+        let desc = ToCardWorkRbDesc::Write(ToCardWorkRbDescWrite {
+            common: ToCardWorkRbDescCommon {
+                is_last: true,
+                is_first: true,
+                total_len: sge0.len
+                    + sge1.as_ref().map_or(0, |sge| sge.len)
+                    + sge2.as_ref().map_or(0, |sge| sge.len)
+                    + sge3.as_ref().map_or(0, |sge| sge.len),
+                raddr,
+                rkey,
+                dqp_ip,
+                dqpn,
+                mac_addr,
+                pmtu: qp.pmtu.clone(),
+                flags,
+                qp_type: qp.qp_type.clone(),
+                psn,
+            },
+            sge0: sge0.into(),
+            sge1: sge1.map(|sge| sge.into()),
+            sge2: sge2.map(|sge| sge.into()),
+            sge3: sge3.map(|sge| sge.into()),
         });
 
         // save operation context for unparking
@@ -405,36 +403,63 @@ impl Device {
             0,
         )?;
 
-        let sgl = vec![ScatterGatherElement {
-            laddr: ack_pkt.as_ptr() as u64,
-            lkey: mr.key.to_le_bytes(),
+        let sge = Sge {
+            addr: ack_pkt.as_ptr() as u64,
             len: ack_pkt.len() as u32,
-        }];
-
-        let desc_header = ToCardWorkRbDescCommonHeader {
-            valid: true,
-            opcode: ToCardWorkRbDescOpcode::Send,
-            is_last: true,
-            is_first: true,
-            extra_segment_cnt: 0,
-            is_success_or_need_signal_cplt: false,
-            total_len: ack_pkt.len() as u32,
+            key: mr.key,
         };
 
-        let desc = ToCardWorkRbDesc::Request(ToCardWorkRbDescRequest {
-            common_header: desc_header,
-            raddr: 0,
-            rkey: [0; 4],
-            dqp_ip,
-            pmtu: qp.pmtu.clone(),
-            flags: 0,
-            qp_type: DeviceQpType::RawPacket,
-            sge_cnt: sgl.len() as u8,
-            psn: 0,
-            mac_addr,
-            dqpn,
-            imm: [0; 4],
-            sgl: DeviceScatterGatherList::from(sgl),
+        // let sgl = vec![ScatterGatherElement {
+        //     laddr: ack_pkt.as_ptr() as u64,
+        //     lkey: mr.key.to_le_bytes(),
+        //     len: ack_pkt.len() as u32,
+        // }];
+
+        // let desc_header = ToCardWorkRbDescCommonHeader {
+        //     valid: true,
+        //     opcode: ToCardWorkRbDescOpcode::Send,
+        //     is_last: true,
+        //     is_first: true,
+        //     extra_segment_cnt: 0,
+        //     is_success_or_need_signal_cplt: false,
+        //     total_len: ack_pkt.len() as u32,
+        // };
+
+        // let desc = ToCardWorkRbDesc::Request(ToCardWorkRbDescRequest {
+        //     common_header: desc_header,
+        //     raddr: 0,
+        //     rkey: [0; 4],
+        //     dqp_ip,
+        //     pmtu: qp.pmtu.clone(),
+        //     flags: 0,
+        //     qp_type: DeviceQpType::RawPacket,
+        //     sge_cnt: sgl.len() as u8,
+        //     psn: 0,
+        //     mac_addr,
+        //     dqpn,
+        //     imm: [0; 4],
+        //     sgl: DeviceScatterGatherList::from(sgl),
+        // });
+
+        let desc = ToCardWorkRbDesc::Write(ToCardWorkRbDescWrite {
+            common: ToCardWorkRbDescCommon {
+                is_last: true,
+                is_first: true,
+                total_len: sge.len,
+                raddr: 0,
+                rkey: 0,
+                dqp_ip,
+                dqpn,
+                mac_addr,
+                pmtu: qp.pmtu.clone(),
+                flags: 0,
+                qp_type: qp.qp_type.clone(),
+                psn,
+            },
+            sge0: sge.into(),
+            sge1: None,
+            sge2: None,
+            sge3: None,
         });
 
         self.0
@@ -623,17 +648,12 @@ impl Iterator for MissingPkt<'_> {
     }
 }
 
-impl From<Vec<ScatterGatherElement>> for DeviceScatterGatherList {
-    fn from(sgl: Vec<ScatterGatherElement>) -> Self {
-        let data = array::from_fn(|idx| DeviceScatterGatherElement {
-            laddr: sgl.get(idx).map_or(0, |elem| elem.laddr),
-            lkey: sgl.get(idx).map_or([0; 4], |elem| elem.lkey),
-            len: sgl.get(idx).map_or(0, |elem| elem.len),
-        });
-
+impl From<Sge> for DeviceSge {
+    fn from(sge: Sge) -> Self {
         Self {
-            data,
-            len: sgl.len() as u32,
+            addr: sge.addr,
+            len: sge.len,
+            key: sge.key,
         }
     }
 }

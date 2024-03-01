@@ -2,7 +2,7 @@
 
 use super::{
     constants, ringbuf::Ringbuf, DeviceAdaptor, Overflowed, ToCardCtrlRbDesc, ToCardRb,
-    ToCardWorkRbDesc, ToHostCtrlRbDesc, ToHostRb, ToHostWorkRbDesc, ToHostWorkRbDescBth,
+    ToCardWorkRbDesc, ToHostCtrlRbDesc, ToHostRb, ToHostWorkRbDesc,
 };
 use emulator_rpc_client::RpcClient;
 use std::{error::Error, net::SocketAddr, sync::Arc};

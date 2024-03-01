@@ -1,7 +1,7 @@
 use crate::{
     device::{
-        RdmaReqStatus, ToHostWorkRbDesc, ToHostWorkRbDescBth, ToHostWorkRbDescFragBth,
-        ToHostWorkRbDescSendQueueReport, ToHostWorkRbDescType,
+        ToHostWorkRbDesc, ToHostWorkRbDescAck, ToHostWorkRbDescNack, ToHostWorkRbDescRead,
+        ToHostWorkRbDescStatus, ToHostWorkRbDescWrite, ToHostWorkRbDescWriteWithImm,
     },
     Device, RecvPktMap,
 };
@@ -12,16 +12,39 @@ impl Device {
             let desc = self.0.adaptor.to_host_work_rb().pop();
 
             match desc {
-                ToHostWorkRbDesc::SendQueueReport(desc) => self.handle_work_desc_send_report(desc),
-                ToHostWorkRbDesc::Bth(desc) => self.handle_work_desc_bth(desc),
-                ToHostWorkRbDesc::BthAeth(_desc) => todo!(),
-                ToHostWorkRbDesc::BthRethImmDt(_desc) => todo!(),
-                ToHostWorkRbDesc::SecondaryReth(_desc) => todo!(),
+                ToHostWorkRbDesc::Read(desc) => self.handle_work_desc_read(desc),
+                ToHostWorkRbDesc::Write(desc) => self.handle_work_desc_write(desc),
+                ToHostWorkRbDesc::WriteWithImm(desc) => self.handle_work_desc_write_with_imm(desc),
+                ToHostWorkRbDesc::Ack(desc) => self.handle_work_desc_ack(desc),
+                ToHostWorkRbDesc::Nack(desc) => self.handle_work_desc_nack(desc),
             }
         }
     }
 
-    fn handle_work_desc_send_report(&self, _desc: ToHostWorkRbDescSendQueueReport) {
+    fn handle_work_desc_read(&self, _desc: ToHostWorkRbDescRead) {
+        todo!()
+    }
+
+    fn handle_work_desc_write(&self, desc: ToHostWorkRbDescWrite) {
+        match desc.common.status {
+            ToHostWorkRbDescStatus::Normal => {
+                let pkt_map = unsafe {
+                    (&self.0.revc_pkt_map as *const _ as *mut RecvPktMap)
+                        .as_mut()
+                        .unwrap_unchecked()
+                };
+
+                pkt_map.insert(desc.psn);
+            }
+            _ => todo!(),
+        }
+    }
+
+    fn handle_work_desc_write_with_imm(&self, _desc: ToHostWorkRbDescWriteWithImm) {
+        todo!()
+    }
+
+    fn handle_work_desc_ack(&self, _desc: ToHostWorkRbDescAck) {
         let mut ctx_map = self.0.send_op_ctx.lock().unwrap();
 
         let Some((_, ctx)) = ctx_map.iter_mut().next() else {
@@ -33,26 +56,7 @@ impl Device {
         ctx.thread.unpark();
     }
 
-    fn handle_work_desc_bth(&self, desc: ToHostWorkRbDescBth) {
-        assert_eq!(desc.desc_type, ToHostWorkRbDescType::RecvPacketMeta);
-
-        match desc.req_status {
-            RdmaReqStatus::Normal => self.handle_work_desc_bth_normal(desc.bth),
-            status => self.handle_work_desc_bth_error(status, desc.bth),
-        }
-    }
-
-    fn handle_work_desc_bth_normal(&self, bth: ToHostWorkRbDescFragBth) {
-        let pkt_map = unsafe {
-            (&self.0.revc_pkt_map as *const _ as *mut RecvPktMap)
-                .as_mut()
-                .unwrap_unchecked()
-        };
-
-        pkt_map.insert(bth.psn);
-    }
-
-    fn handle_work_desc_bth_error(&self, _status: RdmaReqStatus, _bth: ToHostWorkRbDescFragBth) {
+    fn handle_work_desc_nack(&self, _desc: ToHostWorkRbDescNack) {
         todo!()
     }
 }
