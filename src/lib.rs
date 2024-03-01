@@ -1,13 +1,13 @@
 use crate::{
     device::{
         DeviceAdaptor, EmulatedDevice, HardwareDevice, SoftwareDevice, ToCardCtrlRbDesc,
-        ToCardCtrlRbDescSge as DeviceSge, ToCardWorkRbDesc,
+        ToCardCtrlRbDescSge as DeviceSge, ToCardWorkRbDesc, ToCardWorkRbDescCommon,
+        ToCardWorkRbDescWrite,
     },
     mr::{MrCtx, MrPgt},
     pd::PdCtx,
     qp::QpCtx,
 };
-use device::{ToCardWorkRbDescCommon, ToCardWorkRbDescWrite};
 use std::{
     collections::{hash_map::Entry, HashMap},
     error::Error as StdError,

@@ -565,7 +565,7 @@ impl ToCardWorkRbDesc {
         };
 
         dst[0] = (common.pmtu.clone() as u8) << 5; // and reserved8
-        dst[1] = (common.flags as u8) << 3; // and reserved7
+        dst[1] = common.flags << 3; // and reserved7
         dst[2] = (common.qp_type.clone() as u8) << 4; // and reserved6
         dst[3] = sge_cnt << 5; // and reserved5
 

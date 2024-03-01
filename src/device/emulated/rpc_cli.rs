@@ -1,10 +1,7 @@
 use serde::{Deserialize, Serialize};
-use serde_json;
 use std::{
-    error::Error,
     io::Error as IoError,
     net::{SocketAddr, UdpSocket},
-    sync::Arc,
 };
 
 pub(super) struct RpcClient(UdpSocket);
@@ -17,10 +14,7 @@ struct CsrAccessRpcMessage {
 }
 
 impl RpcClient {
-    pub(super) fn new(
-        server_addr: SocketAddr,
-        heap_mem_start_addr: usize,
-    ) -> Result<Self, IoError> {
+    pub(super) fn new(server_addr: SocketAddr) -> Result<Self, IoError> {
         let socket = UdpSocket::bind("0.0.0.0:0")?;
         socket.connect(server_addr)?;
         Ok(Self(socket))

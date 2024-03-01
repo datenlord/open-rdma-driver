@@ -1,58 +1,36 @@
-#![allow(unused)]
-
+use self::rpc_cli::RpcClient;
 use super::{
     constants, ringbuf::Ringbuf, DeviceAdaptor, Overflowed, ToCardCtrlRbDesc, ToCardRb,
     ToCardWorkRbDesc, ToHostCtrlRbDesc, ToHostRb, ToHostWorkRbDesc,
 };
-use emulator_rpc_client::RpcClient;
-use std::{error::Error, net::SocketAddr, sync::Arc, thread, time::Duration};
+use std::{error::Error, net::SocketAddr, thread, time::Duration};
 
-mod emulator_rpc_client;
+mod rpc_cli;
 
 /// An emulated device implementation of the device.
 pub(crate) struct EmulatedDevice {
-    to_card_ctrl_rb: ToCardCtrlRb,
-    to_host_ctrl_rb: ToHostCtrlRb,
-    to_card_work_rb: ToCardWorkRb,
-    to_host_work_rb: ToHostWorkRb,
+    to_card_ctrl_rb: Ringbuf<
+        { constants::RINGBUF_DEPTH },
+        { constants::RINGBUF_ELEM_SIZE },
+        { constants::RINGBUF_PAGE_SIZE },
+    >,
+    to_host_ctrl_rb: Ringbuf<
+        { constants::RINGBUF_DEPTH },
+        { constants::RINGBUF_ELEM_SIZE },
+        { constants::RINGBUF_PAGE_SIZE },
+    >,
+    to_card_work_rb: Ringbuf<
+        { constants::RINGBUF_DEPTH },
+        { constants::RINGBUF_ELEM_SIZE },
+        { constants::RINGBUF_PAGE_SIZE },
+    >,
+    to_host_work_rb: Ringbuf<
+        { constants::RINGBUF_DEPTH },
+        { constants::RINGBUF_ELEM_SIZE },
+        { constants::RINGBUF_PAGE_SIZE },
+    >,
     heap_mem_start_addr: usize,
-    rpc_client: Arc<RpcClient>, // TODO: remove Arc
-}
-
-struct ToCardCtrlRb {
-    rb: Ringbuf<
-        { constants::RINGBUF_DEPTH },
-        { constants::RINGBUF_ELEM_SIZE },
-        { constants::RINGBUF_PAGE_SIZE },
-    >,
-    rpc_client: Arc<RpcClient>,
-}
-
-struct ToHostCtrlRb {
-    rb: Ringbuf<
-        { constants::RINGBUF_DEPTH },
-        { constants::RINGBUF_ELEM_SIZE },
-        { constants::RINGBUF_PAGE_SIZE },
-    >,
-    rpc_client: Arc<RpcClient>,
-}
-
-struct ToCardWorkRb {
-    rb: Ringbuf<
-        { constants::RINGBUF_DEPTH },
-        { constants::RINGBUF_ELEM_SIZE },
-        { constants::RINGBUF_PAGE_SIZE },
-    >,
-    rpc_client: Arc<RpcClient>,
-}
-
-struct ToHostWorkRb {
-    rb: Ringbuf<
-        { constants::RINGBUF_DEPTH },
-        { constants::RINGBUF_ELEM_SIZE },
-        { constants::RINGBUF_PAGE_SIZE },
-    >,
-    rpc_client: Arc<RpcClient>,
+    rpc_cli: RpcClient,
 }
 
 impl EmulatedDevice {
@@ -62,55 +40,40 @@ impl EmulatedDevice {
         rpc_server_addr: SocketAddr,
         heap_mem_start_addr: usize,
     ) -> Result<Self, Box<dyn Error>> {
-        let rpc_client = Arc::new(RpcClient::new(rpc_server_addr, heap_mem_start_addr)?);
-
-        #[allow(clippy::arc_with_non_send_sync)]
         Ok(Self {
-            to_card_ctrl_rb: ToCardCtrlRb {
-                rb: Ringbuf::new(),
-                rpc_client: rpc_client.clone(),
-            },
-            to_host_ctrl_rb: ToHostCtrlRb {
-                rb: Ringbuf::new(),
-                rpc_client: rpc_client.clone(),
-            },
-            to_card_work_rb: ToCardWorkRb {
-                rb: Ringbuf::new(),
-                rpc_client: rpc_client.clone(),
-            },
-            to_host_work_rb: ToHostWorkRb {
-                rb: Ringbuf::new(),
-                rpc_client: rpc_client.clone(),
-            },
+            to_card_ctrl_rb: Ringbuf::new(),
+            to_host_ctrl_rb: Ringbuf::new(),
+            to_card_work_rb: Ringbuf::new(),
+            to_host_work_rb: Ringbuf::new(),
             heap_mem_start_addr,
-            rpc_client,
+            rpc_cli: RpcClient::new(rpc_server_addr)?,
         })
     }
 }
 
 impl DeviceAdaptor for EmulatedDevice {
     fn to_card_ctrl_rb(&self) -> &dyn ToCardRb<ToCardCtrlRbDesc> {
-        &self.to_card_ctrl_rb
+        self
     }
 
     fn to_host_ctrl_rb(&self) -> &dyn ToHostRb<ToHostCtrlRbDesc> {
-        &self.to_host_ctrl_rb
+        self
     }
 
     fn to_card_work_rb(&self) -> &dyn ToCardRb<ToCardWorkRbDesc> {
-        &self.to_card_work_rb
+        self
     }
 
     fn to_host_work_rb(&self) -> &dyn ToHostRb<ToHostWorkRbDesc> {
-        &self.to_host_work_rb
+        self
     }
 
     fn read_csr(&self, addr: usize) -> u32 {
-        self.rpc_client.read_csr(addr)
+        self.rpc_cli.read_csr(addr)
     }
 
     fn write_csr(&self, addr: usize, data: u32) {
-        self.rpc_client.write_csr(addr, data);
+        self.rpc_cli.write_csr(addr, data);
     }
 
     fn get_phys_addr(&self, virt_addr: usize) -> usize {
@@ -118,11 +81,11 @@ impl DeviceAdaptor for EmulatedDevice {
     }
 }
 
-impl ToCardRb<ToCardCtrlRbDesc> for ToCardCtrlRb {
+impl ToCardRb<ToCardCtrlRbDesc> for EmulatedDevice {
     fn push(&self, desc: ToCardCtrlRbDesc) -> Result<(), Overflowed> {
         let desc_cnt = desc.serialized_desc_cnt();
 
-        let Some(mut writer) = self.rb.write(desc_cnt) else {
+        let Some(mut writer) = self.to_card_ctrl_rb.write(desc_cnt) else {
             return Err(Overflowed);
         };
 
@@ -130,19 +93,19 @@ impl ToCardRb<ToCardCtrlRbDesc> for ToCardCtrlRb {
         desc.write(mem);
         drop(writer); // writer should be dropped to update the head pointer
 
-        self.rpc_client.write_csr(
+        self.rpc_cli.write_csr(
             constants::CSR_ADDR_CMD_REQ_QUEUE_HEAD,
-            self.rb.head() as u32,
+            self.to_card_ctrl_rb.head() as u32,
         );
 
         Ok(())
     }
 }
 
-impl ToHostRb<ToHostCtrlRbDesc> for ToHostCtrlRb {
+impl ToHostRb<ToHostCtrlRbDesc> for EmulatedDevice {
     fn pop(&self) -> ToHostCtrlRbDesc {
         loop {
-            let mut reader = self.rb.read();
+            let mut reader = self.to_host_ctrl_rb.read();
 
             let Some(mem) = reader.next() else {
                 drop(reader); // reader should be dropped to update the tail pointer
@@ -153,9 +116,9 @@ impl ToHostRb<ToHostCtrlRbDesc> for ToHostCtrlRb {
             let desc = ToHostCtrlRbDesc::read(mem);
             drop(reader); // reader should be dropped to update the tail pointer
 
-            self.rpc_client.write_csr(
+            self.rpc_cli.write_csr(
                 constants::CSR_ADDR_CMD_RESP_QUEUE_TAIL,
-                self.rb.tail() as u32,
+                self.to_host_ctrl_rb.tail() as u32,
             );
 
             return desc;
@@ -163,11 +126,11 @@ impl ToHostRb<ToHostCtrlRbDesc> for ToHostCtrlRb {
     }
 }
 
-impl ToCardRb<ToCardWorkRbDesc> for ToCardWorkRb {
+impl ToCardRb<ToCardWorkRbDesc> for EmulatedDevice {
     fn push(&self, desc: ToCardWorkRbDesc) -> Result<(), Overflowed> {
         let desc_cnt = desc.serialized_desc_cnt();
 
-        let Some(mut writer) = self.rb.write(desc_cnt) else {
+        let Some(mut writer) = self.to_card_work_rb.write(desc_cnt) else {
             return Err(Overflowed);
         };
 
@@ -181,17 +144,19 @@ impl ToCardRb<ToCardWorkRbDesc> for ToCardWorkRb {
 
         drop(writer); // writer should be dropped to update the head pointer
 
-        self.rpc_client
-            .write_csr(constants::CSR_ADDR_SEND_QUEUE_HEAD, self.rb.head() as u32);
+        self.rpc_cli.write_csr(
+            constants::CSR_ADDR_SEND_QUEUE_HEAD,
+            self.to_card_work_rb.head() as u32,
+        );
 
         Ok(())
     }
 }
 
-impl ToHostRb<ToHostWorkRbDesc> for ToHostWorkRb {
+impl ToHostRb<ToHostWorkRbDesc> for EmulatedDevice {
     fn pop(&self) -> ToHostWorkRbDesc {
         loop {
-            let mut reader = self.rb.read();
+            let mut reader = self.to_host_work_rb.read();
 
             let Some(mem) = reader.next() else {
                 drop(reader); // reader should be dropped to update the tail pointer
@@ -210,15 +175,12 @@ impl ToHostRb<ToHostWorkRbDesc> for ToHostWorkRb {
 
             drop(reader); // reader should be dropped to update the tail pointer
 
-            self.rpc_client.write_csr(
+            self.rpc_cli.write_csr(
                 constants::CSR_ADDR_META_REPORT_QUEUE_TAIL,
-                self.rb.tail() as u32,
+                self.to_host_work_rb.tail() as u32,
             );
 
             return desc;
         }
     }
 }
-
-unsafe impl Send for EmulatedDevice {}
-unsafe impl Sync for EmulatedDevice {}
