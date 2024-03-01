@@ -151,14 +151,14 @@ pub(crate) struct ToHostWorkRbDescWriteWithImm {
 pub(crate) struct ToHostWorkRbDescAck {
     pub(crate) common: ToHostWorkRbDescCommon,
     pub(crate) msn: u32,
-    pub(crate) value: u32,
+    pub(crate) value: u8,
     pub(crate) psn: u32,
 }
 
 pub(crate) struct ToHostWorkRbDescNack {
     pub(crate) common: ToHostWorkRbDescCommon,
     pub(crate) msn: u32,
-    pub(crate) value: u32,
+    pub(crate) value: u8,
     pub(crate) lost_psn: Range<u32>,
 }
 
@@ -187,6 +187,8 @@ pub(crate) struct ToCardCtrlRbDescSge {
     pub(crate) key: u32,
 }
 
+#[derive(TryFromPrimitive)]
+#[repr(u8)]
 pub(crate) enum ToHostWorkRbDescStatus {
     Normal = 1,
     InvAccFlag = 2,
@@ -196,6 +198,8 @@ pub(crate) enum ToHostWorkRbDescStatus {
     Unknown = 6,
 }
 
+#[derive(TryFromPrimitive)]
+#[repr(u8)]
 pub(crate) enum ToHostWorkRbDescTransType {
     Rc = 0x00,
     Uc = 0x01,
@@ -203,6 +207,11 @@ pub(crate) enum ToHostWorkRbDescTransType {
     Ud = 0x03,
     Cnp = 0x04,
     Xrc = 0x05,
+}
+
+pub(super) struct IncompleteToHostWorkRbDesc {
+    parsed: ToHostWorkRbDesc,
+    parsed_cnt: usize,
 }
 
 #[derive(TryFromPrimitive)]
@@ -232,6 +241,56 @@ enum ToCardWorkRbDescOpcode {
     Write = 0,
     WriteWithImm = 1,
     Read = 4,
+}
+
+#[derive(TryFromPrimitive)]
+#[repr(u8)]
+enum ToHostWorkRbDescOpcode {
+    // SendFirst = 0x00,
+    // SendMiddle = 0x01,
+    // SendLast = 0x02,
+    // SendLastWithImmediate = 0x03,
+    // SendOnly = 0x04,
+    // SendOnlyWithImmediate = 0x05,
+    // RdmaWriteFirst = 0x06,
+    // RdmaWriteMiddle = 0x07,
+    // RdmaWriteLast = 0x08,
+    // RdmaWriteLastWithImmediate = 0x09,
+    // RdmaWriteOnly = 0x0a,
+    // RdmaWriteOnlyWithImmediate = 0x0b,
+    // RdmaReadRequest = 0x0c,
+    // RdmaReadResponseFirst = 0x0d,
+    // RdmaReadResponseMiddle = 0x0e,
+    // RdmaReadResponseLast = 0x0f,
+    // RdmaReadResponseOnly = 0x10,
+    // Acknowledge = 0x11,
+    // AtomicAcknowledge = 0x12,
+    // CompareSwap = 0x13,
+    // FetchAdd = 0x14,
+    // Resync = 0x15,
+    // SendLastWithInvalidate = 0x16,
+    // SendOnlyWithInvalidate = 0x17,
+    RdmaWriteFirst = 0x06,
+    RdmaWriteMiddle = 0x07,
+    RdmaWriteLast = 0x08,
+    RdmaWriteLastWithImmediate = 0x09,
+    RdmaWriteOnly = 0x0a,
+    RdmaWriteOnlyWithImmediate = 0x0b,
+    RdmaReadRequest = 0x0c,
+    Acknowledge = 0x11,
+}
+
+#[derive(TryFromPrimitive)]
+#[repr(u8)]
+enum ToHostWorkRbDescAethCode {
+    // AETH_CODE_ACK  = 2'b00,
+    // AETH_CODE_RNR  = 2'b01,
+    // AETH_CODE_RSVD = 2'b10,
+    // AETH_CODE_NAK  = 2'b11
+    Ack = 0b00,
+    Rnr = 0b01,
+    Rsvd = 0b10,
+    Nak = 0b11,
 }
 
 impl ToCardCtrlRbDesc {
@@ -377,7 +436,7 @@ impl ToHostCtrlRbDesc {
         let extra_segment_cnt = src[1] >> 4;
         assert!(extra_segment_cnt == 0);
 
-        let is_success = (src[0] >> 6) != 0;
+        let is_success = (src[0] >> 6) & 0b00000001 != 0;
         let opcode = CtrlRbDescOpcode::try_from(src[0] & 0b00111111).unwrap();
         let op_id = src[4..8].try_into().unwrap();
 
@@ -602,5 +661,211 @@ impl ToCardWorkRbDesc {
         };
 
         2 + sge_desc_cnt
+    }
+}
+
+impl ToHostWorkRbDesc {
+    pub(super) fn read(src: &[u8]) -> Result<ToHostWorkRbDesc, IncompleteToHostWorkRbDesc> {
+        /// (addr, key, len)
+        fn read_reth(src: &[u8]) -> (u64, u32, u32) {
+            // typedef struct {
+            //     Length                  dlen;         // 32
+            //     RKEY                    rkey;         // 32
+            //     ADDR                    va;           // 64
+            // } MeatReportQueueDescFragRETH deriving(Bits, FShow);
+
+            // first 12 bytes are desc type, status and bth
+
+            let addr = u64::from_le_bytes(src[12..20].try_into().unwrap());
+            let key = u32::from_le_bytes(src[20..24].try_into().unwrap());
+            let len = u32::from_le_bytes(src[24..28].try_into().unwrap());
+
+            (addr, key, len)
+        }
+
+        fn read_imm(src: &[u8]) -> [u8; 4] {
+            // typedef struct {
+            //     IMM                             data;           // 32
+            // } MeatReportQueueDescFragImmDT deriving(Bits, FShow);
+
+            // first 28 bytes are desc type, status, bth and reth
+
+            src[28..32].try_into().unwrap()
+        }
+
+        // (last_psn, msn, value, code)
+        fn read_aeth(src: &[u8]) -> (u32, u32, u8, ToHostWorkRbDescAethCode) {
+            // typedef struct {
+            //     AethCode                code;         // 2
+            //     AethValue               value;        // 5
+            //     MSN                     msn;          // 24
+            //     PSN                     lastRetryPSN; // 24
+            // } MeatReportQueueDescFragAETH deriving(Bits, FShow);
+
+            // first 12 bytes are desc type, status and bth
+
+            let psn = u32::from_le_bytes([src[12], src[13], src[14], 0]);
+            let msn = u32::from_le_bytes([src[15], src[16], src[17], 0]);
+            let value = src[18] >> 3;
+            let code = ToHostWorkRbDescAethCode::try_from((src[18] >> 1) & 0b00000011).unwrap();
+
+            (psn, msn, value, code)
+        }
+
+        // typedef struct {
+        //     ReservedZero#(160)              reserved1;      // 160
+        //     MeatReportQueueDescFragBTH      bth;            // 64
+        //     RdmaReqStatus                   reqStatus;      // 8
+        //     ReservedZero#(23)               reserved2;      // 23
+        //     MeatReportQueueDescType         descType;       // 1
+        // } MeatReportQueueDescBth deriving(Bits, FShow);
+
+        let is_pkt_meta = (src[0] >> 7) == 0;
+        assert!(is_pkt_meta); // only support pkt meta for now
+
+        let status = ToHostWorkRbDescStatus::try_from(src[3]).unwrap();
+
+        // typedef struct {
+        //     ReservedZero#(6)                reserved1;    // 6
+        //     Bool                            ackReq;       // 1
+        //     Bool                            solicited;    // 1
+        //     PSN                             psn;          // 24
+        //     QPN                             dqpn;         // 24
+        //     RdmaOpCode                      opcode;       // 5
+        //     TransType                       trans;        // 3
+        // } MeatReportQueueDescFragBTH deriving(Bits, FShow);
+
+        let trans = ToHostWorkRbDescTransType::try_from(src[4] >> 5).unwrap();
+        let opcode = ToHostWorkRbDescOpcode::try_from(src[4] & 0b00011111).unwrap();
+        let dqpn = u32::from_le_bytes([src[5], src[6], src[7], 0]);
+        let psn = u32::from_le_bytes([src[8], src[9], src[10], 0]);
+
+        let common = ToHostWorkRbDescCommon {
+            status,
+            trans,
+            dqpn,
+        };
+
+        match opcode {
+            ToHostWorkRbDescOpcode::RdmaWriteFirst
+            | ToHostWorkRbDescOpcode::RdmaWriteMiddle
+            | ToHostWorkRbDescOpcode::RdmaWriteLast
+            | ToHostWorkRbDescOpcode::RdmaWriteOnly => {
+                let (addr, key, len) = read_reth(src);
+
+                Ok(ToHostWorkRbDesc::Write(ToHostWorkRbDescWrite {
+                    common,
+                    psn,
+                    addr,
+                    len,
+                    key,
+                }))
+            }
+            ToHostWorkRbDescOpcode::RdmaWriteLastWithImmediate
+            | ToHostWorkRbDescOpcode::RdmaWriteOnlyWithImmediate => {
+                let (addr, key, len) = read_reth(src);
+                let imm = read_imm(src);
+
+                Ok(ToHostWorkRbDesc::WriteWithImm(
+                    ToHostWorkRbDescWriteWithImm {
+                        common,
+                        psn,
+                        imm,
+                        addr,
+                        len,
+                        key,
+                    },
+                ))
+            }
+            ToHostWorkRbDescOpcode::RdmaReadRequest => {
+                let (addr, key, len) = read_reth(src);
+
+                Err(IncompleteToHostWorkRbDesc {
+                    parsed: ToHostWorkRbDesc::Read(ToHostWorkRbDescRead {
+                        common,
+                        len,
+                        laddr: addr,
+                        lkey: key,
+                        raddr: 0,
+                        rkey: 0,
+                    }),
+                    parsed_cnt: 1,
+                })
+            }
+            ToHostWorkRbDescOpcode::Acknowledge => {
+                let (last_psn, msn, value, code) = read_aeth(src);
+
+                match code {
+                    ToHostWorkRbDescAethCode::Ack => {
+                        Ok(ToHostWorkRbDesc::Ack(ToHostWorkRbDescAck {
+                            common,
+                            msn,
+                            value,
+                            psn,
+                        }))
+                    }
+                    ToHostWorkRbDescAethCode::Nak => {
+                        Ok(ToHostWorkRbDesc::Nack(ToHostWorkRbDescNack {
+                            common,
+                            msn,
+                            value,
+                            lost_psn: psn..last_psn,
+                        }))
+                    }
+                    ToHostWorkRbDescAethCode::Rnr => unimplemented!(),
+                    ToHostWorkRbDescAethCode::Rsvd => unimplemented!(),
+                }
+            }
+        }
+    }
+
+    pub(super) fn serialized_desc_cnt(&self) -> usize {
+        match self {
+            ToHostWorkRbDesc::Read(_) => 2,
+            ToHostWorkRbDesc::Write(_) => 1,
+            ToHostWorkRbDesc::WriteWithImm(_) => 1,
+            ToHostWorkRbDesc::Ack(_) => 1,
+            ToHostWorkRbDesc::Nack(_) => 1,
+        }
+    }
+}
+
+impl IncompleteToHostWorkRbDesc {
+    pub(super) fn read(
+        mut self,
+        src: &[u8],
+    ) -> Result<ToHostWorkRbDesc, IncompleteToHostWorkRbDesc> {
+        fn read_second_reth(src: &[u8]) -> (u64, u32) {
+            // typedef struct {
+            //     RKEY                            secondaryRkey;   // 32
+            //     ADDR                            secondaryVa;     // 64
+            // } MeatReportQueueDescFragSecondaryRETH deriving(Bits, FShow);
+
+            // first 12 bytes are desc type, status and bth
+
+            let addr = u64::from_le_bytes(src[12..20].try_into().unwrap());
+            let key = u32::from_le_bytes(src[20..24].try_into().unwrap());
+
+            (addr, key)
+        }
+
+        match self.parsed {
+            ToHostWorkRbDesc::Read(mut desc) => match self.parsed_cnt {
+                1 => {
+                    let (raddr, rkey) = read_second_reth(src);
+                    desc.raddr = raddr;
+                    desc.rkey = rkey;
+                    return Ok(ToHostWorkRbDesc::Read(desc));
+                }
+                _ => unreachable!(),
+            },
+            ToHostWorkRbDesc::Write(_) => unreachable!(),
+            ToHostWorkRbDesc::WriteWithImm(_) => unreachable!(),
+            ToHostWorkRbDesc::Ack(_) => unreachable!(),
+            ToHostWorkRbDesc::Nack(_) => unreachable!(),
+        }
+
+        self.parsed_cnt += 1;
+        Err(self)
     }
 }
