@@ -211,8 +211,6 @@ impl Device {
 
         let desc = ToCardWorkRbDesc::Write(ToCardWorkRbDescWrite {
             common: ToCardWorkRbDescCommon {
-                is_last: true,
-                is_first: true,
                 total_len: sge0.len
                     + sge1.as_ref().map_or(0, |sge| sge.len)
                     + sge2.as_ref().map_or(0, |sge| sge.len)
@@ -227,6 +225,8 @@ impl Device {
                 qp_type: qp.qp_type.clone(),
                 psn,
             },
+            is_last: true,
+            is_first: true,
             sge0: sge0.into(),
             sge1: sge1.map(|sge| sge.into()),
             sge2: sge2.map(|sge| sge.into()),
@@ -443,8 +443,6 @@ impl Device {
 
         let desc = ToCardWorkRbDesc::Write(ToCardWorkRbDescWrite {
             common: ToCardWorkRbDescCommon {
-                is_last: true,
-                is_first: true,
                 total_len: sge.len,
                 raddr: 0,
                 rkey: 0,
@@ -456,6 +454,8 @@ impl Device {
                 qp_type: qp.qp_type.clone(),
                 psn,
             },
+            is_last: true,
+            is_first: true,
             sge0: sge.into(),
             sge1: None,
             sge2: None,

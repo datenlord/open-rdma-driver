@@ -16,9 +16,9 @@ pub(crate) enum ToHostCtrlRbDesc {
 }
 
 pub(crate) enum ToCardWorkRbDesc {
+    Read(ToCardWorkRbDescRead),
     Write(ToCardWorkRbDescWrite),
     WriteWithImm(ToCardWorkRbDescWriteWithImm),
-    Read(ToCardWorkRbDescRead),
 }
 
 pub(crate) enum ToHostWorkRbDesc {
@@ -78,8 +78,6 @@ pub(crate) struct ToHostCtrlRbDescQpManagement {
 }
 
 pub(crate) struct ToCardWorkRbDescCommon {
-    pub(crate) is_last: bool,
-    pub(crate) is_first: bool,
     pub(crate) total_len: u32,
     pub(crate) raddr: u64,
     pub(crate) rkey: u32,
@@ -92,8 +90,15 @@ pub(crate) struct ToCardWorkRbDescCommon {
     pub(crate) psn: u32,
 }
 
+pub(crate) struct ToCardWorkRbDescRead {
+    pub(crate) common: ToCardWorkRbDescCommon,
+    pub(crate) sge: ToCardCtrlRbDescSge,
+}
+
 pub(crate) struct ToCardWorkRbDescWrite {
     pub(crate) common: ToCardWorkRbDescCommon,
+    pub(crate) is_last: bool,
+    pub(crate) is_first: bool,
     pub(crate) sge0: ToCardCtrlRbDescSge,
     pub(crate) sge1: Option<ToCardCtrlRbDescSge>,
     pub(crate) sge2: Option<ToCardCtrlRbDescSge>,
@@ -102,16 +107,13 @@ pub(crate) struct ToCardWorkRbDescWrite {
 
 pub(crate) struct ToCardWorkRbDescWriteWithImm {
     pub(crate) common: ToCardWorkRbDescCommon,
+    pub(crate) is_last: bool,
+    pub(crate) is_first: bool,
     pub(crate) imm: [u8; 4],
     pub(crate) sge0: ToCardCtrlRbDescSge,
     pub(crate) sge1: Option<ToCardCtrlRbDescSge>,
     pub(crate) sge2: Option<ToCardCtrlRbDescSge>,
     pub(crate) sge3: Option<ToCardCtrlRbDescSge>,
-}
-
-pub(crate) struct ToCardWorkRbDescRead {
-    pub(crate) common: ToCardWorkRbDescCommon,
-    pub(crate) sge: ToCardCtrlRbDescSge,
 }
 
 pub(crate) struct ToHostWorkRbDescCommon {
@@ -211,8 +213,29 @@ enum CtrlRbDescOpcode {
     QpManagement = 0x02,
 }
 
+enum ToCardWorkRbDescOpcode {
+    // IBV_WR_RDMA_WRITE           =  0,
+    // IBV_WR_RDMA_WRITE_WITH_IMM  =  1,
+    // IBV_WR_SEND                 =  2,
+    // IBV_WR_SEND_WITH_IMM        =  3,
+    // IBV_WR_RDMA_READ            =  4,
+    // IBV_WR_ATOMIC_CMP_AND_SWP   =  5,
+    // IBV_WR_ATOMIC_FETCH_AND_ADD =  6,
+    // IBV_WR_LOCAL_INV            =  7,
+    // IBV_WR_BIND_MW              =  8,
+    // IBV_WR_SEND_WITH_INV        =  9,
+    // IBV_WR_TSO                  = 10,
+    // IBV_WR_DRIVER1              = 11,
+    // IBV_WR_RDMA_READ_RESP       = 12, // Not defined in rdma-core
+    // IBV_WR_FLUSH                = 14,
+    // IBV_WR_ATOMIC_WRITE         = 15
+    Write = 0,
+    WriteWithImm = 1,
+    Read = 4,
+}
+
 impl ToCardCtrlRbDesc {
-    pub(super) fn write(self, dst: &mut [u8]) {
+    pub(super) fn write(&self, dst: &mut [u8]) {
         fn write_common_header(dst: &mut [u8], opcode: CtrlRbDescOpcode, op_id: [u8; 4]) {
             // typedef struct {
             //     Bit#(32)                userData;
@@ -237,7 +260,7 @@ impl ToCardCtrlRbDesc {
             dst[4..8].copy_from_slice(&op_id);
         }
 
-        fn write_update_mr_table(dst: &mut [u8], desc: ToCardCtrlRbDescUpdateMrTable) {
+        fn write_update_mr_table(dst: &mut [u8], desc: &ToCardCtrlRbDescUpdateMrTable) {
             // typedef struct {
             //     ReservedZero#(7)            reserved1;
             //     Bit#(17)                    pgtOffset;
@@ -263,7 +286,7 @@ impl ToCardCtrlRbDesc {
             dst[31] = pgt_offset[2] << 7; // reserved1 and last bit of pgt_offset
         }
 
-        fn write_update_page_table(dst: &mut [u8], desc: ToCardCtrlRbDescUpdatePageTable) {
+        fn write_update_page_table(dst: &mut [u8], desc: &ToCardCtrlRbDescUpdatePageTable) {
             // typedef struct {
             //     ReservedZero#(64)               reserved1;
             //     Bit#(32)                        dmaReadLength;
@@ -280,7 +303,7 @@ impl ToCardCtrlRbDesc {
             dst[24..32].copy_from_slice(&[0; 8]);
         }
 
-        fn write_qp_management(dst: &mut [u8], desc: ToCardCtrlRbDescQpManagement) {
+        fn write_qp_management(dst: &mut [u8], desc: &ToCardCtrlRbDescQpManagement) {
             // typedef struct {
             //     ReservedZero#(104)              reserved1;      // 104 bits
             //     ReservedZero#(5)                reserved2;      // 5   bits
@@ -307,11 +330,11 @@ impl ToCardCtrlRbDesc {
 
             dst[12..16].copy_from_slice(&desc.pd_hdl.to_le_bytes());
 
-            dst[16] = (desc.qp_type as u8) << 4; // and reserved3
+            dst[16] = (desc.qp_type.clone() as u8) << 4; // and reserved3
 
             dst[17] = desc.rq_acc_flags;
 
-            dst[18] = (desc.pmtu as u8) << 3; // and reserved2
+            dst[18] = (desc.pmtu.clone() as u8) << 3; // and reserved2
 
             dst[19..32].copy_from_slice(&[0; 13]); // reserved1
         }
@@ -375,5 +398,209 @@ impl ToHostCtrlRbDesc {
 
     pub(super) fn serialized_desc_cnt(&self) -> usize {
         1
+    }
+}
+
+impl ToCardWorkRbDesc {
+    pub(super) fn write_0(&self, dst: &mut [u8]) {
+        let (common, opcode, is_first, is_last) = match self {
+            ToCardWorkRbDesc::Read(desc) => {
+                (&desc.common, ToCardWorkRbDescOpcode::Read, false, false)
+            }
+            ToCardWorkRbDesc::Write(desc) => (
+                &desc.common,
+                ToCardWorkRbDescOpcode::Write,
+                desc.is_first,
+                desc.is_last,
+            ),
+            ToCardWorkRbDesc::WriteWithImm(desc) => (
+                &desc.common,
+                ToCardWorkRbDescOpcode::WriteWithImm,
+                desc.is_first,
+                desc.is_last,
+            ),
+        };
+
+        // typedef struct {
+        //     Length                  totalLen;                       // 32 bits
+        //     ReservedZero#(20)       reserved1;                      // 20 bits
+        //     Bit#(4)                 extraSegmentCnt;                //  4 bits
+        //     WorkReqOpCode           opCode;                         //  4 bits
+        //     Bool                    isLast;                         //  1 bits
+        //     Bool                    isFirst;                        //  1 bits
+        //     Bool                    isSuccessOrNeedSignalCplt;      //  1 bits
+        //     Bool                    valid;                          //  1 bit
+        // } SendQueueDescCommonHead deriving(Bits, FShow);
+
+        let valid = (true as u8) << 7;
+        let is_success_or_need_signal_cplt = (false as u8) << 6;
+        let is_first = (is_first as u8) << 5;
+        let is_last = (is_last as u8) << 4;
+        let opcode = opcode as u8;
+
+        dst[0] = valid | is_success_or_need_signal_cplt | is_first | is_last | opcode;
+
+        let extra_segment_cnt = self.serialized_desc_cnt() - 1;
+        dst[1] = (extra_segment_cnt as u8) << 4; // extraSegmentCnt and reserved1
+
+        dst[2..4].copy_from_slice(&[0; 2]); // reserved1
+
+        dst[4..8].copy_from_slice(&common.total_len.to_le_bytes());
+
+        // typedef struct {
+        //     ReservedZero#(64)           reserved1;        // 64 bits
+        //     AddrIPv4                    dqpIP;            // 32 bits
+        //     RKEY                        rkey;             // 32 bits
+        //     ADDR                        raddr;            // 64 bits
+        //     SendQueueDescCommonHead     commonHeader;     // 64 bits
+        // } SendQueueReqDescSeg0 deriving(Bits, FShow);
+
+        dst[8..16].copy_from_slice(&common.raddr.to_le_bytes());
+        dst[16..20].copy_from_slice(&common.rkey.to_le_bytes());
+        dst[20..24].copy_from_slice(&common.dqp_ip.octets());
+        dst[24..32].copy_from_slice(&[0; 8]); // reserved1
+    }
+
+    fn write_1(&self, dst: &mut [u8]) {
+        // typedef struct {
+        //     ReservedZero#(64)       reserved1;          // 64 bits
+
+        //     IMM                     imm;                // 32 bits
+
+        //     ReservedZero#(8)        reserved2;          // 8  bits
+        //     QPN                     dqpn;               // 24 bits
+
+        //     ReservedZero#(16)       reserved3;          // 16 bits
+        //     MAC                     macAddr;            // 48 bits
+
+        //     ReservedZero#(8)        reserved4;          // 8  bits
+        //     PSN                     psn;                // 24 bits
+
+        //     ReservedZero#(5)        reserved5;          // 5  bits
+        //     NumSGE                  sgeCnt;             // 3  bits
+
+        //     ReservedZero#(4)        reserved6;          // 4  bits
+        //     TypeQP                  qpType;             // 4  bits
+
+        //     ReservedZero#(3)        reserved7;          // 3  bits
+        //     WorkReqSendFlag         flags;              // 5  bits
+
+        //     ReservedZero#(5)        reserved8;          // 5  bits
+        //     PMTU                    pmtu;               // 3  bits
+        // } SendQueueReqDescSeg1 deriving(Bits, FShow);
+
+        let (common, sge_cnt) = match self {
+            ToCardWorkRbDesc::Read(desc) => (&desc.common, 1),
+            ToCardWorkRbDesc::Write(desc) => (
+                &desc.common,
+                1 + desc.sge1.is_some() as u8
+                    + desc.sge2.is_some() as u8
+                    + desc.sge3.is_some() as u8,
+            ),
+            ToCardWorkRbDesc::WriteWithImm(desc) => (
+                &desc.common,
+                1 + desc.sge1.is_some() as u8
+                    + desc.sge2.is_some() as u8
+                    + desc.sge3.is_some() as u8,
+            ),
+        };
+
+        dst[0] = (common.pmtu.clone() as u8) << 5; // and reserved8
+        dst[1] = (common.flags as u8) << 3; // and reserved7
+        dst[2] = (common.qp_type.clone() as u8) << 4; // and reserved6
+        dst[3] = sge_cnt << 5; // and reserved5
+
+        dst[4..7].copy_from_slice(&common.psn.to_le_bytes()[0..3]);
+        dst[7] = 0; // reserved4
+
+        dst[8..14].copy_from_slice(&common.mac_addr);
+        dst[14..16].copy_from_slice(&[0; 2]); // reserved3
+
+        dst[16..20].copy_from_slice(&common.dqpn.to_le_bytes()[0..3]);
+        dst[20] = 0; // reserved2
+
+        if let ToCardWorkRbDesc::WriteWithImm(desc) = self {
+            dst[24..28].copy_from_slice(&desc.imm);
+        } else {
+            dst[24..28].copy_from_slice(&[0; 4]);
+        }
+
+        dst[28..32].copy_from_slice(&[0; 4]); // reserved1
+    }
+
+    fn write_2(&self, dst: &mut [u8]) {
+        // typedef struct {
+        //     ADDR   laddr;         // 64 bits
+        //     Length len;           // 32 bits
+        //     LKEY   lkey;          // 32 bits
+        // } SendQueueReqDescFragSGE deriving(Bits, FShow);
+
+        // typedef struct {
+        //     SendQueueReqDescFragSGE     sge1;       // 128 bits
+        //     SendQueueReqDescFragSGE     sge2;       // 128 bits
+        // } SendQueueReqDescVariableLenSGE deriving(Bits, FShow);
+
+        let (sge0, sge1) = match self {
+            ToCardWorkRbDesc::Read(desc) => (&desc.sge, None),
+            ToCardWorkRbDesc::Write(desc) => (&desc.sge0, desc.sge1.as_ref()),
+            ToCardWorkRbDesc::WriteWithImm(desc) => (&desc.sge0, desc.sge1.as_ref()),
+        };
+
+        dst[0..4].copy_from_slice(&sge0.key.to_le_bytes());
+        dst[4..8].copy_from_slice(&sge0.len.to_le_bytes());
+        dst[8..16].copy_from_slice(&sge0.addr.to_le_bytes());
+
+        if let Some(sge1) = sge1 {
+            dst[16..20].copy_from_slice(&sge1.key.to_le_bytes());
+            dst[20..24].copy_from_slice(&sge1.len.to_le_bytes());
+            dst[24..32].copy_from_slice(&sge1.addr.to_le_bytes());
+        } else {
+            dst[16..32].copy_from_slice(&[0; 16]);
+        }
+    }
+
+    fn write_3(&self, dst: &mut [u8]) {
+        // typedef struct {
+        //     ADDR   laddr;         // 64 bits
+        //     Length len;           // 32 bits
+        //     LKEY   lkey;          // 32 bits
+        // } SendQueueReqDescFragSGE deriving(Bits, FShow);
+
+        // typedef struct {
+        //     SendQueueReqDescFragSGE     sge1;       // 128 bits
+        //     SendQueueReqDescFragSGE     sge2;       // 128 bits
+        // } SendQueueReqDescVariableLenSGE deriving(Bits, FShow);
+
+        let (sge2, sge3) = match self {
+            ToCardWorkRbDesc::Read(desc) => (None, None),
+            ToCardWorkRbDesc::Write(desc) => (desc.sge2.as_ref(), desc.sge3.as_ref()),
+            ToCardWorkRbDesc::WriteWithImm(desc) => (desc.sge2.as_ref(), desc.sge3.as_ref()),
+        };
+
+        if let Some(sge2) = sge2 {
+            dst[16..20].copy_from_slice(&sge2.key.to_le_bytes());
+            dst[20..24].copy_from_slice(&sge2.len.to_le_bytes());
+            dst[24..32].copy_from_slice(&sge2.addr.to_le_bytes());
+        } else {
+            dst[16..32].copy_from_slice(&[0; 16]);
+        }
+
+        if let Some(sge3) = sge3 {
+            dst[16..20].copy_from_slice(&sge3.key.to_le_bytes());
+            dst[20..24].copy_from_slice(&sge3.len.to_le_bytes());
+            dst[24..32].copy_from_slice(&sge3.addr.to_le_bytes());
+        } else {
+            dst[16..32].copy_from_slice(&[0; 16]);
+        }
+    }
+
+    pub(super) fn serialized_desc_cnt(&self) -> usize {
+        let sge_desc_cnt = match self {
+            ToCardWorkRbDesc::Read(_) => 1,
+            ToCardWorkRbDesc::Write(desc) => 1 + desc.sge2.is_some() as usize,
+            ToCardWorkRbDesc::WriteWithImm(desc) => 1 + desc.sge2.is_some() as usize,
+        };
+
+        2 + sge_desc_cnt
     }
 }
