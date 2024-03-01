@@ -357,7 +357,7 @@ impl ToCardCtrlRbDesc {
             // bits 0-7 are header bits
 
             dst[8..16].copy_from_slice(&desc.start_addr.to_le_bytes());
-            dst[16..20].copy_from_slice(&(desc.pgt_idx * 8).to_le_bytes());
+            dst[16..20].copy_from_slice(&desc.pgt_idx.to_le_bytes());
             dst[20..24].copy_from_slice(&(desc.pgte_cnt * 8).to_le_bytes());
             dst[24..32].copy_from_slice(&[0; 8]);
         }

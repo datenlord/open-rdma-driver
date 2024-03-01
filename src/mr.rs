@@ -76,7 +76,7 @@ impl Device {
 
         let desc = ToCardCtrlRbDesc::UpdatePageTable(ToCardCtrlRbDescUpdatePageTable {
             common: ToCardCtrlRbDescCommon { op_id },
-            start_addr: mr_pgt.table.as_ptr() as u64,
+            start_addr: self.0.adaptor.get_phys_addr(mr_pgt.table.as_ptr() as usize) as u64,
             pgt_idx: pgt_offset as u32,
             pgte_cnt: pgte_cnt as u32,
         });
