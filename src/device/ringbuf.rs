@@ -5,7 +5,7 @@ use std::sync::{
 
 pub(super) struct Ringbuf<const DEPTH: usize, const ELEM_SIZE: usize, const PAGE_SIZE: usize> {
     buf: Mutex<Box<[u8]>>,
-    align_offset: usize,
+    aligned_ringbuf_addr: usize,
     head: AtomicUsize,
     tail: AtomicUsize,
 }
@@ -17,7 +17,7 @@ pub(super) struct RingbufWriter<
     const PAGE_SIZE: usize,
 > {
     buf: MutexGuard<'a, Box<[u8]>>,
-    align_offset: usize,
+    aligned_ringbuf_addr: usize,
     head: &'a AtomicUsize,
     total_cnt: usize,
     written_cnt: usize,
@@ -30,7 +30,7 @@ pub(super) struct RingbufReader<
     const PAGE_SIZE: usize,
 > {
     buf: MutexGuard<'a, Box<[u8]>>,
-    align_offset: usize,
+    aligned_ringbuf_addr: usize,
     head: usize,
     tail: &'a AtomicUsize,
     read_cnt: usize,
@@ -54,11 +54,11 @@ impl<const DEPTH: usize, const ELEM_SIZE: usize, const PAGE_SIZE: usize>
     pub(super) fn new() -> Self {
         let buf = Mutex::new(vec![0; DEPTH * ELEM_SIZE + PAGE_SIZE].into_boxed_slice());
         let buf_addr = buf.lock().unwrap().as_ref().as_ptr() as usize;
-        let align_offset = buf_addr & (PAGE_SIZE - 1);
+        let aligned_ringbuf_addr = (buf_addr + PAGE_SIZE) & (!(PAGE_SIZE - 1));
 
         Self {
             buf,
-            align_offset,
+            aligned_ringbuf_addr,
             head: AtomicUsize::new(0),
             tail: AtomicUsize::new(0),
         }
@@ -73,7 +73,7 @@ impl<const DEPTH: usize, const ELEM_SIZE: usize, const PAGE_SIZE: usize>
 
         Some(RingbufWriter {
             buf: self.buf.lock().unwrap(),
-            align_offset: self.align_offset,
+            aligned_ringbuf_addr: self.aligned_ringbuf_addr,
             head: &self.head,
             total_cnt: desc_cnt,
             written_cnt: 0,
@@ -84,7 +84,7 @@ impl<const DEPTH: usize, const ELEM_SIZE: usize, const PAGE_SIZE: usize>
     pub(super) fn read(&self) -> RingbufReader<'_, DEPTH, ELEM_SIZE, PAGE_SIZE> {
         RingbufReader {
             buf: self.buf.lock().unwrap(),
-            align_offset: self.align_offset,
+            aligned_ringbuf_addr: self.aligned_ringbuf_addr,
             head: self.head.load(Ordering::Acquire),
             tail: &self.tail,
             read_cnt: 0,
@@ -97,6 +97,19 @@ impl<const DEPTH: usize, const ELEM_SIZE: usize, const PAGE_SIZE: usize>
 
     pub(super) fn tail(&self) -> usize {
         self.tail.load(Ordering::Acquire)
+    }
+
+    pub(super) fn set_head(&self, value: usize) {
+        // TODO: Check is Ordering::Release enough ?
+        self.head.store(value, Ordering::Release);
+    }
+
+    pub(super) fn set_tail(&self, value: usize) {
+        self.tail.store(value, Ordering::Release);
+    }
+
+    pub(super) fn get_ringbuf_addr(&self) -> usize {
+        self.aligned_ringbuf_addr
     }
 }
 
@@ -112,8 +125,8 @@ impl<'a, const DEPTH: usize, const ELEM_SIZE: usize, const PAGE_SIZE: usize> Ite
 
         let idx = (self.head.load(Ordering::Acquire) + self.written_cnt)
             & Ringbuf::<DEPTH, ELEM_SIZE, PAGE_SIZE>::PTR_IDX_MASK;
-        let offset = self.align_offset + idx * ELEM_SIZE;
-        let ptr = unsafe { self.buf.as_mut_ptr().add(offset) };
+        let offset = idx * ELEM_SIZE;
+        let ptr = unsafe { (self.aligned_ringbuf_addr as *mut u8).add(offset) };
 
         self.written_cnt += 1;
 
@@ -142,8 +155,8 @@ impl<'a, const DEPTH: usize, const ELEM_SIZE: usize, const PAGE_SIZE: usize> Ite
 
         let idx = (self.tail.load(Ordering::Acquire) + self.read_cnt)
             & Ringbuf::<DEPTH, ELEM_SIZE, PAGE_SIZE>::PTR_IDX_MASK;
-        let offset = self.align_offset + idx * ELEM_SIZE;
-        let ptr = unsafe { self.buf.as_ptr().add(offset) };
+        let offset = idx * ELEM_SIZE;
+        let ptr = unsafe { (self.aligned_ringbuf_addr as *const u8).add(offset) };
 
         self.read_cnt += 1;
 

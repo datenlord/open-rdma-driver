@@ -1,6 +1,9 @@
 use buddy_system_allocator::LockedHeap;
 use libc;
-use open_rdma_driver::Device;
+use open_rdma_driver::{
+    qp::{Pmtu, QpType},
+    Device,
+};
 use std::ffi::c_void;
 
 const ORDER: usize = 32;
@@ -50,8 +53,13 @@ fn main() {
     let pd = dev.alloc_pd().unwrap();
     eprintln!("PD allocated");
 
-    let mr = dev.reg_mr(pd, 0, 100, 4096, 12).unwrap();
+    let mr = dev.reg_mr(pd.clone(), 0, 100, 1024 * 1024 * 2, 12).unwrap();
     eprintln!("MR registered");
+
+    let qp = dev
+        .create_qp(pd.clone(), QpType::Rc, Pmtu::Mtu4096, 0x07)
+        .unwrap();
+    eprintln!("QP created");
 
     dev.dereg_mr(mr).unwrap();
     eprintln!("MR deregistered");

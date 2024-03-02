@@ -40,13 +40,60 @@ impl EmulatedDevice {
         rpc_server_addr: SocketAddr,
         heap_mem_start_addr: usize,
     ) -> Result<Self, Box<dyn Error>> {
+        let rpc_cli = RpcClient::new(rpc_server_addr)?;
+        let to_card_ctrl_rb = Ringbuf::new();
+        let to_host_ctrl_rb = Ringbuf::new();
+        let to_card_work_rb = Ringbuf::new();
+        let to_host_work_rb = Ringbuf::new();
+
+        // TODO: refactor this, should call function to get PA instead of calc it directly.
+        let pa_of_ringbuf = to_card_ctrl_rb.get_ringbuf_addr() - heap_mem_start_addr;
+        rpc_cli.write_csr(
+            constants::CSR_ADDR_CMD_REQ_QUEUE_ADDR_LOW,
+            (pa_of_ringbuf & 0xFFFFFFFF) as u32,
+        );
+        rpc_cli.write_csr(
+            constants::CSR_ADDR_CMD_REQ_QUEUE_ADDR_HIGH,
+            (pa_of_ringbuf >> 32) as u32,
+        );
+
+        let pa_of_ringbuf = to_host_ctrl_rb.get_ringbuf_addr() - heap_mem_start_addr;
+        rpc_cli.write_csr(
+            constants::CSR_ADDR_CMD_RESP_QUEUE_ADDR_LOW,
+            (pa_of_ringbuf & 0xFFFFFFFF) as u32,
+        );
+        rpc_cli.write_csr(
+            constants::CSR_ADDR_CMD_RESP_QUEUE_ADDR_HIGH,
+            (pa_of_ringbuf >> 32) as u32,
+        );
+
+        let pa_of_ringbuf = to_card_work_rb.get_ringbuf_addr() - heap_mem_start_addr;
+        rpc_cli.write_csr(
+            constants::CSR_ADDR_SEND_QUEUE_ADDR_LOW,
+            (pa_of_ringbuf & 0xFFFFFFFF) as u32,
+        );
+        rpc_cli.write_csr(
+            constants::CSR_ADDR_SEND_QUEUE_ADDR_HIGH,
+            (pa_of_ringbuf >> 32) as u32,
+        );
+
+        let pa_of_ringbuf = to_host_work_rb.get_ringbuf_addr() - heap_mem_start_addr;
+        rpc_cli.write_csr(
+            constants::CSR_ADDR_META_REPORT_QUEUE_ADDR_LOW,
+            (pa_of_ringbuf & 0xFFFFFFFF) as u32,
+        );
+        rpc_cli.write_csr(
+            constants::CSR_ADDR_META_REPORT_QUEUE_ADDR_HIGH,
+            (pa_of_ringbuf >> 32) as u32,
+        );
+
         Ok(Self {
-            to_card_ctrl_rb: Ringbuf::new(),
-            to_host_ctrl_rb: Ringbuf::new(),
-            to_card_work_rb: Ringbuf::new(),
-            to_host_work_rb: Ringbuf::new(),
+            to_card_ctrl_rb,
+            to_host_ctrl_rb,
+            to_card_work_rb,
+            to_host_work_rb,
             heap_mem_start_addr,
-            rpc_cli: RpcClient::new(rpc_server_addr)?,
+            rpc_cli,
         })
     }
 }
@@ -105,8 +152,11 @@ impl ToCardRb<ToCardCtrlRbDesc> for EmulatedDevice {
 impl ToHostRb<ToHostCtrlRbDesc> for EmulatedDevice {
     fn pop(&self) -> ToHostCtrlRbDesc {
         loop {
+            let new_head = self
+                .rpc_cli
+                .read_csr(constants::CSR_ADDR_CMD_RESP_QUEUE_HEAD);
+            self.to_host_ctrl_rb.set_head(new_head as usize);
             let mut reader = self.to_host_ctrl_rb.read();
-
             let Some(mem) = reader.next() else {
                 drop(reader); // reader should be dropped to update the tail pointer
                 thread::sleep(Duration::from_millis(1)); // sleep for a while
@@ -156,6 +206,10 @@ impl ToCardRb<ToCardWorkRbDesc> for EmulatedDevice {
 impl ToHostRb<ToHostWorkRbDesc> for EmulatedDevice {
     fn pop(&self) -> ToHostWorkRbDesc {
         loop {
+            let new_head = self
+                .rpc_cli
+                .read_csr(constants::CSR_ADDR_META_REPORT_QUEUE_HEAD);
+            self.to_host_work_rb.set_head(new_head as usize);
             let mut reader = self.to_host_work_rb.read();
 
             let Some(mem) = reader.next() else {

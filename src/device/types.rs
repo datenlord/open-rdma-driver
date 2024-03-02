@@ -314,12 +314,12 @@ impl ToCardCtrlRbDesc {
             //     Bool                    valid;
             // } CmdQueueDescCommonHead deriving(Bits, FShow);
 
-            let valid = (true as u8) << 7;
-            let is_success_or_need_signal_cplt = (false as u8) << 6;
-            let opcode = opcode as u8;
+            let valid = (true as u8);
+            let is_success_or_need_signal_cplt = (false as u8) << 1;
+            let opcode = (opcode as u8) << 2;
             dst[0] = valid | is_success_or_need_signal_cplt | opcode;
 
-            let extra_segment_cnt = 0 << 4;
+            let extra_segment_cnt = 0;
             dst[1] = extra_segment_cnt;
 
             dst[2] = 0; // reserved1
@@ -351,7 +351,7 @@ impl ToCardCtrlRbDesc {
             let pgt_offset = desc.pgt_offset.to_le_bytes();
             dst[29] = pgt_offset[0];
             dst[30] = pgt_offset[1];
-            dst[31] = pgt_offset[2] << 7; // reserved1 and last bit of pgt_offset
+            dst[31] = pgt_offset[2]; // reserved1 and last bit of pgt_offset
         }
 
         fn write_update_page_table(dst: &mut [u8], desc: &ToCardCtrlRbDescUpdatePageTable) {
@@ -389,8 +389,8 @@ impl ToCardCtrlRbDesc {
 
             // bits 0-7 are header bits
 
-            let is_valid = (desc.is_valid as u8) << 7;
-            let is_error = (false as u8) << 6;
+            let is_valid = (desc.is_valid as u8);
+            let is_error = (false as u8) << 1;
             dst[8] = is_valid | is_error; // and reserved4
 
             let qpn = desc.qpn.to_le_bytes();
@@ -398,11 +398,11 @@ impl ToCardCtrlRbDesc {
 
             dst[12..16].copy_from_slice(&desc.pd_hdl.to_le_bytes());
 
-            dst[16] = (desc.qp_type.clone() as u8) << 4; // and reserved3
+            dst[16] = desc.qp_type.clone() as u8; // and reserved3
 
             dst[17] = desc.rq_acc_flags;
 
-            dst[18] = (desc.pmtu.clone() as u8) << 3; // and reserved2
+            dst[18] = desc.pmtu.clone() as u8; // and reserved2
 
             dst[19..32].copy_from_slice(&[0; 13]); // reserved1
         }
@@ -439,14 +439,14 @@ impl ToHostCtrlRbDesc {
         //     Bool                    valid;
         // } CmdQueueDescCommonHead deriving(Bits, FShow);
 
-        let valid = (src[0] >> 7) != 0;
+        let valid = (src[0] & 0b00000001) != 0;
         assert!(valid);
 
-        let extra_segment_cnt = src[1] >> 4;
+        let extra_segment_cnt = src[1] & 0b00001111;
         assert!(extra_segment_cnt == 0);
 
-        let is_success = (src[0] >> 6) & 0b00000001 != 0;
-        let opcode = CtrlRbDescOpcode::try_from(src[0] & 0b00111111).unwrap();
+        let is_success = (src[0] >> 1) & 0b00000001 != 0;
+        let opcode = CtrlRbDescOpcode::try_from(src[0] >> 2 & 0b00111111).unwrap();
         let op_id = src[4..8].try_into().unwrap();
 
         let common = ToHostCtrlRbDescCommon { op_id, is_success };
@@ -500,16 +500,16 @@ impl ToCardWorkRbDesc {
         //     Bool                    valid;                          //  1 bit
         // } SendQueueDescCommonHead deriving(Bits, FShow);
 
-        let valid = (true as u8) << 7;
-        let is_success_or_need_signal_cplt = (false as u8) << 6;
-        let is_first = (is_first as u8) << 5;
-        let is_last = (is_last as u8) << 4;
-        let opcode = opcode as u8;
+        let valid = true as u8;
+        let is_success_or_need_signal_cplt = (false as u8) << 1;
+        let is_first = (is_first as u8) << 2;
+        let is_last = (is_last as u8) << 3;
+        let opcode = (opcode as u8) << 4;
 
         dst[0] = valid | is_success_or_need_signal_cplt | is_first | is_last | opcode;
 
         let extra_segment_cnt = self.serialized_desc_cnt() - 1;
-        dst[1] = (extra_segment_cnt as u8) << 4; // extraSegmentCnt and reserved1
+        dst[1] = extra_segment_cnt as u8; // extraSegmentCnt and reserved1
 
         dst[2..4].copy_from_slice(&[0; 2]); // reserved1
 
@@ -573,10 +573,10 @@ impl ToCardWorkRbDesc {
             ),
         };
 
-        dst[0] = (common.pmtu.clone() as u8) << 5; // and reserved8
-        dst[1] = common.flags << 3; // and reserved7
-        dst[2] = (common.qp_type.clone() as u8) << 4; // and reserved6
-        dst[3] = sge_cnt << 5; // and reserved5
+        dst[0] = common.pmtu.clone() as u8; // and reserved8
+        dst[1] = common.flags; // and reserved7
+        dst[2] = common.qp_type.clone() as u8; // and reserved6
+        dst[3] = sge_cnt; // and reserved5
 
         dst[4..7].copy_from_slice(&common.psn.to_le_bytes()[0..3]);
         dst[7] = 0; // reserved4
