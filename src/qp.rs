@@ -9,6 +9,7 @@ use rand::RngCore as _;
 use std::{
     hash::{Hash, Hasher},
     mem,
+    net::Ipv4Addr,
     sync::atomic::{AtomicBool, Ordering},
 };
 
@@ -24,6 +25,9 @@ pub struct Qp {
     pub(crate) qp_type: DeviceQpType,
     pub(crate) rq_acc_flags: u8,
     pub(crate) pmtu: DevicePmtu,
+    pub(crate) dqpn: u32,
+    pub(crate) dqp_ip: Ipv4Addr,
+    pub(crate) mac_addr: [u8; 6],
 }
 
 pub(crate) struct QpCtx {
@@ -46,12 +50,16 @@ pub enum Pmtu {
 }
 
 impl Device {
+    #[allow(clippy::too_many_arguments)]
     pub fn create_qp(
         &self,
         pd: Pd,
         qp_type: QpType,
         pmtu: Pmtu,
         rq_acc_flags: u8,
+        dqpn: u32,
+        dqp_ip: Ipv4Addr,
+        mac_addr: [u8; 6],
     ) -> Result<Qp, Error> {
         let mut qp_pool = self.0.qp.lock().unwrap();
         let mut pd_pool = self.0.pd.lock().unwrap();
@@ -71,6 +79,9 @@ impl Device {
             qp_type: DeviceQpType::from(qp_type),
             rq_acc_flags,
             pmtu: DevicePmtu::from(pmtu),
+            dqpn,
+            dqp_ip,
+            mac_addr,
         };
 
         let pd_ctx = pd_pool.get_mut(&qp.pd).ok_or(Error::InvalidPd)?;

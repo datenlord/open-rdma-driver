@@ -1,7 +1,8 @@
 use crate::{
     device::{
         ToHostWorkRbDesc, ToHostWorkRbDescAck, ToHostWorkRbDescNack, ToHostWorkRbDescRead,
-        ToHostWorkRbDescStatus, ToHostWorkRbDescWrite, ToHostWorkRbDescWriteWithImm,
+        ToHostWorkRbDescStatus, ToHostWorkRbDescWrite, ToHostWorkRbDescWriteType,
+        ToHostWorkRbDescWriteWithImm,
     },
     Device, RecvPktMap,
 };
@@ -33,6 +34,26 @@ impl Device {
                         .as_mut()
                         .unwrap_unchecked()
                 };
+
+                // new pkt_map
+                if matches!(
+                    desc.write_type,
+                    ToHostWorkRbDescWriteType::First | ToHostWorkRbDescWriteType::Only
+                ) {
+                    let qp_table = self.0.qp.lock().unwrap();
+                    let (qp, qp_ctx) = qp_table.iter().next().unwrap();
+
+                    let first_pkt_len =
+                        u64::from(&qp.pmtu) - (desc.addr % (u64::from(&qp.pmtu) - 1));
+
+                    let pkt_cnt =
+                        1 + (desc.len - first_pkt_len as u32).div_ceil(u64::from(&qp.pmtu) as u32);
+
+                    *pkt_map = RecvPktMap::new(pkt_cnt as usize, qp_ctx.recv_psn);
+
+                    // unblock recv_pkt_comp_thread
+                    self.0.check_recv_pkt_comp_thread.get().unwrap().unpark();
+                }
 
                 pkt_map.insert(desc.psn);
             }

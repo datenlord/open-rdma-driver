@@ -12,7 +12,7 @@ use std::{
     collections::{hash_map::Entry, HashMap},
     error::Error as StdError,
     mem,
-    net::{Ipv4Addr, SocketAddr},
+    net::SocketAddr,
     ops::Range,
     sync::{
         atomic::{AtomicU32, Ordering},
@@ -47,7 +47,6 @@ struct DeviceInner<D: ?Sized> {
     mr_pgt: Mutex<MrPgt>,
     ctrl_op_ctx: Mutex<HashMap<[u8; 4], CtrlOpCtx>>,
     send_op_ctx: Mutex<HashMap<Qp, SendOpCtx>>,
-    recv_op_ctx: Mutex<HashMap<Qp, RecvOpCtx>>,
     revc_pkt_map: RecvPktMap, // TODO: extend to support multiple QPs
     check_recv_pkt_comp_thread: OnceLock<Thread>,
     adaptor: D,
@@ -69,12 +68,8 @@ struct SendOpCtx {
     result: Option<bool>,
 }
 
-struct RecvOpCtx {
-    thread: Thread,
-    result: Option<bool>,
-}
-
 struct RecvPktMap {
+    pkt_cnt: usize,
     start_psn: u32,
     stage_0: Box<[u64]>,
     stage_0_last_chunk: u64,
@@ -102,7 +97,6 @@ impl Device {
             qp: Mutex::new(HashMap::new()),
             mr_pgt: Mutex::new(MrPgt::new()),
             send_op_ctx: Mutex::new(HashMap::new()),
-            recv_op_ctx: Mutex::new(HashMap::new()),
             ctrl_op_ctx: Mutex::new(HashMap::new()),
             revc_pkt_map: RecvPktMap::new(0, 0),
             check_recv_pkt_comp_thread: OnceLock::new(),
@@ -130,7 +124,6 @@ impl Device {
             mr_pgt: Mutex::new(MrPgt::new()),
             ctrl_op_ctx: Mutex::new(HashMap::new()),
             send_op_ctx: Mutex::new(HashMap::new()),
-            recv_op_ctx: Mutex::new(HashMap::new()),
             revc_pkt_map: RecvPktMap::new(0, 0),
             check_recv_pkt_comp_thread: OnceLock::new(),
             adaptor: SoftwareDevice::init().map_err(Error::Device)?,
@@ -160,7 +153,6 @@ impl Device {
             mr_pgt: Mutex::new(MrPgt::new()),
             ctrl_op_ctx: Mutex::new(HashMap::new()),
             send_op_ctx: Mutex::new(HashMap::new()),
-            recv_op_ctx: Mutex::new(HashMap::new()),
             revc_pkt_map: RecvPktMap::new(0, 0),
             check_recv_pkt_comp_thread: OnceLock::new(),
             adaptor: EmulatedDevice::init(rpc_server_addr, heap_mem_start_addr)
@@ -181,12 +173,9 @@ impl Device {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub fn send_data(
+    pub fn write(
         &self,
         qp: Qp,
-        dqp_ip: Ipv4Addr,
-        mac_addr: [u8; 6],
-        dqpn: u32,
         raddr: u64,
         rkey: u32,
         flags: u8,
@@ -195,30 +184,26 @@ impl Device {
         sge2: Option<Sge>,
         sge3: Option<Sge>,
     ) -> Result<(), Error> {
-        let psn = self
-            .0
-            .qp
-            .lock()
-            .unwrap()
-            .get(&qp)
-            .ok_or(Error::InvalidQp)?
-            .send_psn;
+        let mut qp_table = self.0.qp.lock().unwrap();
+        let qp_ctx = qp_table.get_mut(&qp).ok_or(Error::InvalidQp)?;
+
+        let total_len = sge0.len
+            + sge1.as_ref().map_or(0, |sge| sge.len)
+            + sge2.as_ref().map_or(0, |sge| sge.len)
+            + sge3.as_ref().map_or(0, |sge| sge.len);
 
         let desc = ToCardWorkRbDesc::Write(ToCardWorkRbDescWrite {
             common: ToCardWorkRbDescCommon {
-                total_len: sge0.len
-                    + sge1.as_ref().map_or(0, |sge| sge.len)
-                    + sge2.as_ref().map_or(0, |sge| sge.len)
-                    + sge3.as_ref().map_or(0, |sge| sge.len),
+                total_len,
                 raddr,
                 rkey,
-                dqp_ip,
-                dqpn,
-                mac_addr,
+                dqp_ip: qp.dqp_ip,
+                dqpn: qp.dqpn,
+                mac_addr: qp.mac_addr,
                 pmtu: qp.pmtu.clone(),
                 flags,
                 qp_type: qp.qp_type.clone(),
-                psn,
+                psn: qp_ctx.send_psn,
             },
             is_last: true,
             is_first: true,
@@ -278,192 +263,14 @@ impl Device {
             unreachable!()
         };
 
-        if !result {
-            return Err(Error::DeviceReturnFailed);
-        }
+        let first_pkt_len = u64::from(&qp.pmtu) - (raddr % (u64::from(&qp.pmtu) - 1));
+        let pkt_cnt = 1 + (total_len - first_pkt_len as u32).div_ceil(u64::from(&qp.pmtu) as u32);
 
-        // TODO: update send_psn
-
-        Ok(())
-    }
-
-    pub fn recv_data(
-        &self,
-        qp: Qp,
-        dqp_ip: Ipv4Addr,
-        mac_addr: [u8; 6],
-        dqpn: u32,
-        total_len: u32,
-    ) -> Result<(), Error> {
-        let psn = self
-            .0
-            .qp
-            .lock()
-            .unwrap()
-            .get(&qp)
-            .ok_or(Error::InvalidQp)?
-            .recv_psn;
-
-        {
-            let mut ctx = self.0.recv_op_ctx.lock().unwrap();
-
-            match ctx.entry(qp.clone()) {
-                Entry::Occupied(_) => return Err(Error::QpBusy),
-                Entry::Vacant(entry) => {
-                    let pkt_map = unsafe {
-                        (&self.0.revc_pkt_map as *const _ as *mut RecvPktMap)
-                            .as_mut()
-                            .unwrap_unchecked()
-                    };
-
-                    *pkt_map = RecvPktMap::new(total_len as usize, psn); // update recv pkt map
-
-                    entry.insert(RecvOpCtx {
-                        thread: thread::current(),
-                        result: None,
-                    });
-                }
-            }
-        }
-
-        self.0.check_recv_pkt_comp_thread.get().unwrap().unpark();
-        thread::park();
-
-        let RecvOpCtx {
-            thread: _,
-            result: Some(result),
-        } = (loop {
-            let mut ctx = self.0.recv_op_ctx.lock().unwrap();
-
-            match ctx.get(&qp) {
-                Some(RecvOpCtx {
-                    thread: _,
-                    result: Some(_),
-                }) => {}
-                Some(RecvOpCtx {
-                    thread: _,
-                    result: None,
-                }) => continue,
-                None => return Err(Error::RecvCtxLost),
-            }
-
-            break ctx.remove(&qp).unwrap();
-        })
-        else {
-            unreachable!()
-        };
+        qp_ctx.send_psn += pkt_cnt;
 
         if !result {
             return Err(Error::DeviceReturnFailed);
         }
-
-        let bth_pkey = [0; 2]; // TODO: get pkey
-        let bth_tver_pad_m_se = 0b00000000;
-        let bth_opcode = 0b00010001; // ACK
-        let bth_dqp = dqpn.to_le_bytes();
-        let bth_resv8 = 0;
-        let bth_psn = psn.to_le_bytes();
-        let bth_resv7_a = 0;
-        let aeth_msn = psn.to_le_bytes(); // TODO: update msn
-        let aeth_syn = 0;
-
-        let ack_pkt = [
-            // BTH bytes 0-3
-            bth_pkey[0],
-            bth_pkey[1],
-            bth_tver_pad_m_se,
-            bth_opcode,
-            // BTH bytes 4-7
-            bth_dqp[0],
-            bth_dqp[1],
-            bth_dqp[2],
-            bth_resv8,
-            // BTH bytes 8-11
-            bth_psn[0],
-            bth_psn[1],
-            bth_psn[2],
-            bth_resv7_a,
-            // AETH bytes 0-3
-            aeth_msn[0],
-            aeth_msn[1],
-            aeth_msn[2],
-            aeth_syn,
-        ];
-
-        let mr = self.reg_mr(
-            qp.pd.clone(),
-            ack_pkt.as_ptr() as u64,
-            ack_pkt.len() as u32,
-            4096,
-            0,
-        )?;
-
-        let sge = Sge {
-            addr: ack_pkt.as_ptr() as u64,
-            len: ack_pkt.len() as u32,
-            key: mr.key,
-        };
-
-        // let sgl = vec![ScatterGatherElement {
-        //     laddr: ack_pkt.as_ptr() as u64,
-        //     lkey: mr.key.to_le_bytes(),
-        //     len: ack_pkt.len() as u32,
-        // }];
-
-        // let desc_header = ToCardWorkRbDescCommonHeader {
-        //     valid: true,
-        //     opcode: ToCardWorkRbDescOpcode::Send,
-        //     is_last: true,
-        //     is_first: true,
-        //     extra_segment_cnt: 0,
-        //     is_success_or_need_signal_cplt: false,
-        //     total_len: ack_pkt.len() as u32,
-        // };
-
-        // let desc = ToCardWorkRbDesc::Request(ToCardWorkRbDescRequest {
-        //     common_header: desc_header,
-        //     raddr: 0,
-        //     rkey: [0; 4],
-        //     dqp_ip,
-        //     pmtu: qp.pmtu.clone(),
-        //     flags: 0,
-        //     qp_type: DeviceQpType::RawPacket,
-        //     sge_cnt: sgl.len() as u8,
-        //     psn: 0,
-        //     mac_addr,
-        //     dqpn,
-        //     imm: [0; 4],
-        //     sgl: DeviceScatterGatherList::from(sgl),
-        // });
-
-        let desc = ToCardWorkRbDesc::Write(ToCardWorkRbDescWrite {
-            common: ToCardWorkRbDescCommon {
-                total_len: sge.len,
-                raddr: 0,
-                rkey: 0,
-                dqp_ip,
-                dqpn,
-                mac_addr,
-                pmtu: qp.pmtu.clone(),
-                flags: 0,
-                qp_type: qp.qp_type.clone(),
-                psn,
-            },
-            is_last: true,
-            is_first: true,
-            sge0: sge.into(),
-            sge1: None,
-            sge2: None,
-            sge3: None,
-        });
-
-        self.0
-            .adaptor
-            .to_card_work_rb()
-            .push(desc)
-            .map_err(|_| Error::DeviceBusy)?;
-
-        // TODO: update recv_psn
 
         Ok(())
     }
@@ -539,15 +346,90 @@ impl Device {
                 thread::sleep(Duration::from_micros(100));
             }
 
-            let mut ctx_map = self.0.recv_op_ctx.lock().unwrap();
+            // packet complete, send ack
 
-            let Some((_, ctx)) = ctx_map.iter_mut().next() else {
-                eprintln!("no send ctx found");
-                continue;
+            let mut qp_table = self.0.qp.lock().unwrap();
+            let qp = qp_table.keys().next().unwrap();
+
+            let bth_pkey = [0; 2]; // TODO: get pkey
+            let bth_tver_pad_m_se = 0b00000000;
+            let bth_opcode = 0b00010001; // ACK
+            let bth_dqp = qp.dqpn.to_le_bytes();
+            let bth_resv8 = 0;
+            let bth_psn = [0; 3];
+            let bth_resv7_a = 0;
+            let aeth_msn = [0; 3];
+            let aeth_syn = 0;
+
+            let ack_pkt = [
+                // BTH bytes 0-3
+                bth_pkey[0],
+                bth_pkey[1],
+                bth_tver_pad_m_se,
+                bth_opcode,
+                // BTH bytes 4-7
+                bth_dqp[0],
+                bth_dqp[1],
+                bth_dqp[2],
+                bth_resv8,
+                // BTH bytes 8-11
+                bth_psn[0],
+                bth_psn[1],
+                bth_psn[2],
+                bth_resv7_a,
+                // AETH bytes 0-3
+                aeth_msn[0],
+                aeth_msn[1],
+                aeth_msn[2],
+                aeth_syn,
+            ];
+
+            let mr = self
+                .reg_mr(
+                    qp.pd.clone(),
+                    ack_pkt.as_ptr() as u64,
+                    ack_pkt.len() as u32,
+                    4096,
+                    0,
+                )
+                .unwrap();
+
+            let sge = Sge {
+                addr: ack_pkt.as_ptr() as u64,
+                len: ack_pkt.len() as u32,
+                key: mr.key,
             };
 
-            ctx.result = Some(true);
-            ctx.thread.unpark();
+            let desc = ToCardWorkRbDesc::Write(ToCardWorkRbDescWrite {
+                common: ToCardWorkRbDescCommon {
+                    total_len: sge.len,
+                    raddr: 0,
+                    rkey: 0,
+                    dqp_ip: qp.dqp_ip,
+                    dqpn: qp.dqpn,
+                    mac_addr: qp.mac_addr,
+                    pmtu: qp.pmtu.clone(),
+                    flags: 0,
+                    qp_type: qp.qp_type.clone(),
+                    psn: 0,
+                },
+                is_last: true,
+                is_first: true,
+                sge0: sge.into(),
+                sge1: None,
+                sge2: None,
+                sge3: None,
+            });
+
+            self.0
+                .adaptor
+                .to_card_work_rb()
+                .push(desc)
+                .map_err(|_| Error::DeviceBusy)
+                .unwrap();
+
+            let qp_ctx = qp_table.values_mut().next().unwrap();
+            qp_ctx.recv_psn += self.0.revc_pkt_map.pkt_cnt as u32;
         }
     }
 }
@@ -556,7 +438,7 @@ impl RecvPktMap {
     const FULL_CHUNK_DIV_BIT_SHIFT_CNT: u32 = 64usize.ilog2();
     const LAST_CHUNK_MOD_MASK: usize = mem::size_of::<u64>() * 8 - 1;
 
-    fn new(len: usize, start_psn: u32) -> Self {
+    fn new(pkt_cnt: usize, start_psn: u32) -> Self {
         let create_stage = |len| {
             // used-bit count in the last u64, len % 64
             let rem = len & Self::LAST_CHUNK_MOD_MASK;
@@ -568,11 +450,12 @@ impl RecvPktMap {
             (vec![0; len].into_boxed_slice(), last_chunk)
         };
 
-        let (stage_0, stage_0_last_chunk) = create_stage(len);
+        let (stage_0, stage_0_last_chunk) = create_stage(pkt_cnt);
         let (stage_1, stage_1_last_chunk) = create_stage(stage_0.len());
         let (stage_2, stage_2_last_chunk) = create_stage(stage_1.len());
 
         Self {
+            pkt_cnt,
             start_psn,
             stage_0,
             stage_0_last_chunk,

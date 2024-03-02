@@ -133,6 +133,7 @@ pub(crate) struct ToHostWorkRbDescRead {
 
 pub(crate) struct ToHostWorkRbDescWrite {
     pub(crate) common: ToHostWorkRbDescCommon,
+    pub(crate) write_type: ToHostWorkRbDescWriteType,
     pub(crate) psn: u32,
     pub(crate) addr: u64,
     pub(crate) len: u32,
@@ -141,6 +142,7 @@ pub(crate) struct ToHostWorkRbDescWrite {
 
 pub(crate) struct ToHostWorkRbDescWriteWithImm {
     pub(crate) common: ToHostWorkRbDescCommon,
+    pub(crate) write_type: ToHostWorkRbDescWriteType,
     pub(crate) psn: u32,
     pub(crate) imm: [u8; 4],
     pub(crate) addr: u64,
@@ -207,6 +209,13 @@ pub(crate) enum ToHostWorkRbDescTransType {
     Ud = 0x03,
     Cnp = 0x04,
     Xrc = 0x05,
+}
+
+pub(crate) enum ToHostWorkRbDescWriteType {
+    First,
+    Middle,
+    Last,
+    Only,
 }
 
 pub(super) struct IncompleteToHostWorkRbDesc {
@@ -747,28 +756,78 @@ impl ToHostWorkRbDesc {
         };
 
         match opcode {
-            ToHostWorkRbDescOpcode::RdmaWriteFirst
-            | ToHostWorkRbDescOpcode::RdmaWriteMiddle
-            | ToHostWorkRbDescOpcode::RdmaWriteLast
-            | ToHostWorkRbDescOpcode::RdmaWriteOnly => {
+            ToHostWorkRbDescOpcode::RdmaWriteFirst => {
                 let (addr, key, len) = read_reth(src);
 
                 Ok(ToHostWorkRbDesc::Write(ToHostWorkRbDescWrite {
                     common,
+                    write_type: ToHostWorkRbDescWriteType::First,
                     psn,
                     addr,
                     len,
                     key,
                 }))
             }
-            ToHostWorkRbDescOpcode::RdmaWriteLastWithImmediate
-            | ToHostWorkRbDescOpcode::RdmaWriteOnlyWithImmediate => {
+            ToHostWorkRbDescOpcode::RdmaWriteMiddle => {
+                let (addr, key, len) = read_reth(src);
+
+                Ok(ToHostWorkRbDesc::Write(ToHostWorkRbDescWrite {
+                    common,
+                    write_type: ToHostWorkRbDescWriteType::Middle,
+                    psn,
+                    addr,
+                    len,
+                    key,
+                }))
+            }
+            ToHostWorkRbDescOpcode::RdmaWriteLast => {
+                let (addr, key, len) = read_reth(src);
+
+                Ok(ToHostWorkRbDesc::Write(ToHostWorkRbDescWrite {
+                    common,
+                    write_type: ToHostWorkRbDescWriteType::Last,
+                    psn,
+                    addr,
+                    len,
+                    key,
+                }))
+            }
+            ToHostWorkRbDescOpcode::RdmaWriteOnly => {
+                let (addr, key, len) = read_reth(src);
+
+                Ok(ToHostWorkRbDesc::Write(ToHostWorkRbDescWrite {
+                    common,
+                    write_type: ToHostWorkRbDescWriteType::Only,
+                    psn,
+                    addr,
+                    len,
+                    key,
+                }))
+            }
+            ToHostWorkRbDescOpcode::RdmaWriteLastWithImmediate => {
                 let (addr, key, len) = read_reth(src);
                 let imm = read_imm(src);
 
                 Ok(ToHostWorkRbDesc::WriteWithImm(
                     ToHostWorkRbDescWriteWithImm {
                         common,
+                        write_type: ToHostWorkRbDescWriteType::Last,
+                        psn,
+                        imm,
+                        addr,
+                        len,
+                        key,
+                    },
+                ))
+            }
+            ToHostWorkRbDescOpcode::RdmaWriteOnlyWithImmediate => {
+                let (addr, key, len) = read_reth(src);
+                let imm = read_imm(src);
+
+                Ok(ToHostWorkRbDesc::WriteWithImm(
+                    ToHostWorkRbDescWriteWithImm {
+                        common,
+                        write_type: ToHostWorkRbDescWriteType::Only,
                         psn,
                         imm,
                         addr,
@@ -832,10 +891,7 @@ impl ToHostWorkRbDesc {
 
 impl IncompleteToHostWorkRbDesc {
     #[allow(unreachable_code)]
-    pub(super) fn read(
-        self,
-        src: &[u8],
-    ) -> Result<ToHostWorkRbDesc, IncompleteToHostWorkRbDesc> {
+    pub(super) fn read(self, src: &[u8]) -> Result<ToHostWorkRbDesc, IncompleteToHostWorkRbDesc> {
         fn read_second_reth(src: &[u8]) -> (u64, u32) {
             // typedef struct {
             //     RKEY                            secondaryRkey;   // 32
@@ -868,5 +924,17 @@ impl IncompleteToHostWorkRbDesc {
 
         self.parsed_cnt += 1;
         Err(self)
+    }
+}
+
+impl From<&Pmtu> for u64 {
+    fn from(pmtu: &Pmtu) -> u64 {
+        match pmtu {
+            Pmtu::Mtu256 => 256,
+            Pmtu::Mtu512 => 512,
+            Pmtu::Mtu1024 => 1024,
+            Pmtu::Mtu2048 => 2048,
+            Pmtu::Mtu4096 => 4096,
+        }
     }
 }
