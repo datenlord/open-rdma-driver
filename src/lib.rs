@@ -235,6 +235,8 @@ impl Device {
             .push(desc)
             .map_err(|_| Error::DeviceBusy)?;
 
+        drop(qp_table);
+
         // park and wait
         thread::park();
 
@@ -266,6 +268,10 @@ impl Device {
         let first_pkt_len = u64::from(&qp.pmtu) - (raddr % (u64::from(&qp.pmtu) - 1));
         let pkt_cnt = 1 + (total_len - first_pkt_len as u32).div_ceil(u64::from(&qp.pmtu) as u32);
 
+        // regain the lock.
+        // TODO: do we need to redesign the lock here?
+        let mut qp_table = self.0.qp.lock().unwrap();
+        let qp_ctx = qp_table.get_mut(&qp).ok_or(Error::InvalidQp)?;
         qp_ctx.send_psn += pkt_cnt;
 
         if !result {

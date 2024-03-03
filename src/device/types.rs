@@ -120,6 +120,7 @@ pub(crate) struct ToHostWorkRbDescCommon {
     pub(crate) status: ToHostWorkRbDescStatus,
     pub(crate) trans: ToHostWorkRbDescTransType,
     pub(crate) dqpn: u32,
+    pub(crate) pad_cnt: u8,
 }
 
 pub(crate) struct ToHostWorkRbDescRead {
@@ -584,16 +585,16 @@ impl ToCardWorkRbDesc {
         dst[8..14].copy_from_slice(&common.mac_addr);
         dst[14..16].copy_from_slice(&[0; 2]); // reserved3
 
-        dst[16..20].copy_from_slice(&common.dqpn.to_le_bytes()[0..3]);
-        dst[20] = 0; // reserved2
+        dst[16..19].copy_from_slice(&common.dqpn.to_le_bytes()[0..3]);
+        dst[19] = 0; // reserved2
 
         if let ToCardWorkRbDesc::WriteWithImm(desc) = self {
-            dst[24..28].copy_from_slice(&desc.imm);
+            dst[20..24].copy_from_slice(&desc.imm);
         } else {
-            dst[24..28].copy_from_slice(&[0; 4]);
+            dst[20..24].copy_from_slice(&[0; 4]);
         }
 
-        dst[28..32].copy_from_slice(&[0; 4]); // reserved1
+        dst[24..32].copy_from_slice(&[0; 8]); // reserved1
     }
 
     pub(super) fn write_2(&self, dst: &mut [u8]) {
@@ -646,11 +647,11 @@ impl ToCardWorkRbDesc {
         };
 
         if let Some(sge2) = sge2 {
-            dst[16..20].copy_from_slice(&sge2.key.to_le_bytes());
-            dst[20..24].copy_from_slice(&sge2.len.to_le_bytes());
-            dst[24..32].copy_from_slice(&sge2.addr.to_le_bytes());
+            dst[0..4].copy_from_slice(&sge2.key.to_le_bytes());
+            dst[4..8].copy_from_slice(&sge2.len.to_le_bytes());
+            dst[8..16].copy_from_slice(&sge2.addr.to_le_bytes());
         } else {
-            dst[16..32].copy_from_slice(&[0; 16]);
+            dst[8..16].copy_from_slice(&[0; 16]);
         }
 
         if let Some(sge3) = sge3 {
@@ -705,7 +706,7 @@ impl ToHostWorkRbDesc {
         // (last_psn, msn, value, code)
         fn read_aeth(src: &[u8]) -> (u32, u32, u8, ToHostWorkRbDescAethCode) {
             // typedef struct {
-            //     AethCode                code;         // 2
+            //     AethCode                code;         // 3
             //     AethValue               value;        // 5
             //     MSN                     msn;          // 24
             //     PSN                     lastRetryPSN; // 24
@@ -715,8 +716,8 @@ impl ToHostWorkRbDesc {
 
             let psn = u32::from_le_bytes([src[12], src[13], src[14], 0]);
             let msn = u32::from_le_bytes([src[15], src[16], src[17], 0]);
-            let value = src[18] >> 3;
-            let code = ToHostWorkRbDescAethCode::try_from((src[18] >> 1) & 0b00000011).unwrap();
+            let value = src[18] & 0b00011111;
+            let code = ToHostWorkRbDescAethCode::try_from((src[18] >> 5) & 0b00000111).unwrap();
 
             (psn, msn, value, code)
         }
@@ -729,13 +730,14 @@ impl ToHostWorkRbDesc {
         //     MeatReportQueueDescType         descType;       // 1
         // } MeatReportQueueDescBth deriving(Bits, FShow);
 
-        let is_pkt_meta = (src[0] >> 7) == 0;
+        let is_pkt_meta = (src[0] & 0b00000001) == 0;
         assert!(is_pkt_meta); // only support pkt meta for now
 
         let status = ToHostWorkRbDescStatus::try_from(src[3]).unwrap();
 
         // typedef struct {
-        //     ReservedZero#(6)                reserved1;    // 6
+        //     ReservedZero#(4)                reserved1;    // 4
+        //     PAD                             padCnt;       // 2
         //     Bool                            ackReq;       // 1
         //     Bool                            solicited;    // 1
         //     PSN                             psn;          // 24
@@ -744,15 +746,17 @@ impl ToHostWorkRbDesc {
         //     TransType                       trans;        // 3
         // } MeatReportQueueDescFragBTH deriving(Bits, FShow);
 
-        let trans = ToHostWorkRbDescTransType::try_from(src[4] >> 5).unwrap();
-        let opcode = ToHostWorkRbDescOpcode::try_from(src[4] & 0b00011111).unwrap();
+        let trans = ToHostWorkRbDescTransType::try_from(src[4] & 0b00000111).unwrap();
+        let opcode = ToHostWorkRbDescOpcode::try_from((src[4] >> 3) & 0b00011111).unwrap();
         let dqpn = u32::from_le_bytes([src[5], src[6], src[7], 0]);
         let psn = u32::from_le_bytes([src[8], src[9], src[10], 0]);
+        let pad_cnt = (src[11] >> 2) & 0b00000111;
 
         let common = ToHostWorkRbDescCommon {
             status,
             trans,
             dqpn,
+            pad_cnt,
         };
 
         match opcode {

@@ -2,9 +2,10 @@ use buddy_system_allocator::LockedHeap;
 use libc;
 use open_rdma_driver::{
     qp::{Pmtu, QpType},
-    Device,
+    Device, Sge,
 };
-use std::ffi::c_void;
+use std::time;
+use std::{ffi::c_void, net::Ipv4Addr};
 
 const ORDER: usize = 32;
 const SHM_PATH: &str = "/bluesim1\0";
@@ -53,13 +54,77 @@ fn main() {
     let pd = dev.alloc_pd().unwrap();
     eprintln!("PD allocated");
 
-    let mr = dev.reg_mr(pd.clone(), 0, 100, 1024 * 1024 * 2, 12).unwrap();
+    let mut mr_buffer: Vec<u8> = Vec::new();
+    mr_buffer.resize(8192, 0);
+
+    let current_time = time::SystemTime::now()
+        .duration_since(time::UNIX_EPOCH)
+        .expect("Time went backwards");
+
+    let timestamp = current_time.as_secs();
+
+    mr_buffer[..8].copy_from_slice(&timestamp.to_le_bytes());
+    let access_flag = 7;
+    let mr = dev
+        .reg_mr(
+            pd.clone(),
+            mr_buffer.as_mut_ptr() as u64,
+            mr_buffer.len() as u32,
+            1024 * 1024 * 2,
+            access_flag,
+        )
+        .unwrap();
     eprintln!("MR registered");
 
     let qp = dev
-        .create_qp(pd.clone(), QpType::Rc, Pmtu::Mtu4096, 0x07)
+        .create_qp(
+            pd.clone(),
+            QpType::Rc,
+            Pmtu::Mtu4096,
+            access_flag,
+            0,
+            Ipv4Addr::new(0x44, 0x33, 0x22, 0x11),
+            [0xFF, 0xEE, 0xDD, 0xCC, 0xBB, 0xAA],
+        )
         .unwrap();
     eprintln!("QP created");
+
+    let sge0 = Sge {
+        addr: &mr_buffer[0] as *const u8 as u64,
+        len: 1,
+        key: mr.get_key(),
+    };
+
+    let sge1 = Sge {
+        addr: &mr_buffer[1] as *const u8 as u64,
+        len: 1,
+        key: mr.get_key(),
+    };
+
+    let sge2 = Sge {
+        addr: &mr_buffer[2] as *const u8 as u64,
+        len: 1,
+        key: mr.get_key(),
+    };
+
+    let sge3 = Sge {
+        addr: &mr_buffer[3] as *const u8 as u64,
+        len: 5,
+        key: mr.get_key(),
+    };
+    dev.write(
+        qp,
+        &mr_buffer[8] as *const u8 as u64,
+        mr.get_key(),
+        0,
+        sge0,
+        Some(sge1),
+        Some(sge2),
+        Some(sge3),
+    )
+    .unwrap();
+
+    eprintln!("Write req sent");
 
     dev.dereg_mr(mr).unwrap();
     eprintln!("MR deregistered");

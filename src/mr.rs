@@ -16,6 +16,12 @@ pub struct Mr {
     pub(crate) key: u32,
 }
 
+impl Mr {
+    pub fn get_key(&self) -> u32 {
+        self.key
+    }
+}
+
 #[allow(unused)]
 pub(crate) struct MrCtx {
     pub(crate) key: u32,
@@ -68,8 +74,8 @@ impl Device {
 
         for pgt_idx in 0..pgte_cnt {
             let va = addr + (pg_size as usize * pgt_idx) as u64;
-            let pa = va; // TODO: get physical address
-            mr_pgt.table[pgt_offset + pgt_idx] = pa;
+            let pa = self.0.adaptor.get_phys_addr(va as usize);
+            mr_pgt.table[pgt_offset + pgt_idx] = pa as u64;
         }
 
         let op_id = super::get_ctrl_op_id();

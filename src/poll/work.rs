@@ -43,11 +43,18 @@ impl Device {
                     let qp_table = self.0.qp.lock().unwrap();
                     let (qp, qp_ctx) = qp_table.iter().next().unwrap();
 
-                    let first_pkt_len =
-                        u64::from(&qp.pmtu) - (desc.addr % (u64::from(&qp.pmtu) - 1));
+                    let real_payload_len = desc.len - desc.common.pad_cnt as u32;
 
-                    let pkt_cnt =
-                        1 + (desc.len - first_pkt_len as u32).div_ceil(u64::from(&qp.pmtu) as u32);
+                    let first_pkt_len =
+                        if matches!(desc.write_type, ToHostWorkRbDescWriteType::First) {
+                            u64::from(&qp.pmtu) - (desc.addr & (u64::from(&qp.pmtu) - 1))
+                        } else {
+                            real_payload_len as u64
+                        };
+
+                    let pkt_cnt = 1
+                        + (real_payload_len - first_pkt_len as u32)
+                            .div_ceil(u64::from(&qp.pmtu) as u32);
 
                     *pkt_map = RecvPktMap::new(pkt_cnt as usize, qp_ctx.recv_psn);
 

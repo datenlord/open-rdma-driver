@@ -30,6 +30,15 @@ pub struct Qp {
     pub(crate) mac_addr: [u8; 6],
 }
 
+impl Qp {
+    pub fn get_qpn(&self) -> u32 {
+        self.qpn
+    }
+    pub fn get_dqpn(&self) -> u32 {
+        self.dqpn
+    }
+}
+
 pub(crate) struct QpCtx {
     pub(crate) send_psn: u32,
     pub(crate) recv_psn: u32,
@@ -64,6 +73,7 @@ impl Device {
         let mut qp_pool = self.0.qp.lock().unwrap();
         let mut pd_pool = self.0.pd.lock().unwrap();
 
+        // TODO: by IB spec, QP0 and QP1 are reserved, so qpn should start with 2
         let Some(qpn) = QP_AVAILABLITY
             .iter()
             .enumerate()
@@ -73,7 +83,7 @@ impl Device {
         };
 
         let qp = Qp {
-            handle: rand::thread_rng().next_u32(),
+            handle: rand::thread_rng().next_u32(), // TODO: don't use random number as handler,and why not use QPN as handle?
             pd,
             qpn: qpn as u32,
             qp_type: DeviceQpType::from(qp_type),
