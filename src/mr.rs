@@ -54,6 +54,7 @@ impl Device {
         pg_size: u32,
         acc_flags: u8,
     ) -> Result<Mr, Error> {
+        // FIXME: must call mlock to lock the pages, prevent form being swapped out.
         let mut mr_table = self.0.mr_table.lock().unwrap();
         let mut pd_pool = self.0.pd.lock().unwrap();
 

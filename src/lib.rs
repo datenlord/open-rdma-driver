@@ -355,7 +355,7 @@ impl Device {
             // packet complete, send ack
 
             let mut qp_table = self.0.qp.lock().unwrap();
-            let qp = qp_table.keys().next().unwrap();
+            let qp = qp_table.keys().next().unwrap(); // FIXME: Why call next to get a QP? too tricky?
 
             let bth_pkey = [0; 2]; // TODO: get pkey
             let bth_tver_pad_m_se = 0b00000000;
@@ -390,6 +390,9 @@ impl Device {
                 aeth_syn,
             ];
 
+            // FIXME: Will this mr leak ?
+            // FIXME: MR on stack? we don't know when hardware will consume this send request. allocate it on heap!
+            // FIXME: use a pre-allocated MR as ack message pool.
             let mr = self
                 .reg_mr(
                     qp.pd.clone(),
@@ -416,7 +419,7 @@ impl Device {
                     mac_addr: qp.mac_addr,
                     pmtu: qp.pmtu.clone(),
                     flags: 0,
-                    qp_type: qp.qp_type.clone(),
+                    qp_type: qp.qp_type.clone(), // FIXME: this should be fixed to RawPacket?
                     psn: 0,
                 },
                 is_last: true,
