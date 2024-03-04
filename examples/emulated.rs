@@ -126,6 +126,8 @@ fn main() {
 
     eprintln!("Write req sent");
 
+    assert!(mr_buffer[0..8] == mr_buffer[8..16]);
+
     dev.dereg_mr(mr).unwrap();
     eprintln!("MR deregistered");
 }

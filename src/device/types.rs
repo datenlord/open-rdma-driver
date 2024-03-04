@@ -174,6 +174,7 @@ pub(crate) enum Pmtu {
     Mtu4096 = 5,
 }
 
+// TODO, there are two QpType definition in the code, remove one?
 #[derive(Debug, Clone)]
 pub(crate) enum QpType {
     Rc = 2,
@@ -615,16 +616,16 @@ impl ToCardWorkRbDesc {
             ToCardWorkRbDesc::WriteWithImm(desc) => (&desc.sge0, desc.sge1.as_ref()),
         };
 
-        dst[0..4].copy_from_slice(&sge0.key.to_le_bytes());
-        dst[4..8].copy_from_slice(&sge0.len.to_le_bytes());
-        dst[8..16].copy_from_slice(&sge0.addr.to_le_bytes());
+        dst[16..20].copy_from_slice(&sge0.key.to_le_bytes());
+        dst[20..24].copy_from_slice(&sge0.len.to_le_bytes());
+        dst[24..32].copy_from_slice(&sge0.addr.to_le_bytes());
 
         if let Some(sge1) = sge1 {
-            dst[16..20].copy_from_slice(&sge1.key.to_le_bytes());
-            dst[20..24].copy_from_slice(&sge1.len.to_le_bytes());
-            dst[24..32].copy_from_slice(&sge1.addr.to_le_bytes());
+            dst[0..4].copy_from_slice(&sge1.key.to_le_bytes());
+            dst[4..8].copy_from_slice(&sge1.len.to_le_bytes());
+            dst[8..16].copy_from_slice(&sge1.addr.to_le_bytes());
         } else {
-            dst[16..32].copy_from_slice(&[0; 16]);
+            dst[0..16].copy_from_slice(&[0; 16]);
         }
     }
 
@@ -646,18 +647,18 @@ impl ToCardWorkRbDesc {
             ToCardWorkRbDesc::WriteWithImm(desc) => (desc.sge2.as_ref(), desc.sge3.as_ref()),
         };
 
-        if let Some(sge2) = sge2 {
-            dst[0..4].copy_from_slice(&sge2.key.to_le_bytes());
-            dst[4..8].copy_from_slice(&sge2.len.to_le_bytes());
-            dst[8..16].copy_from_slice(&sge2.addr.to_le_bytes());
+        if let Some(sge3) = sge3 {
+            dst[0..4].copy_from_slice(&sge3.key.to_le_bytes());
+            dst[4..8].copy_from_slice(&sge3.len.to_le_bytes());
+            dst[8..16].copy_from_slice(&sge3.addr.to_le_bytes());
         } else {
             dst[8..16].copy_from_slice(&[0; 16]);
         }
 
-        if let Some(sge3) = sge3 {
-            dst[16..20].copy_from_slice(&sge3.key.to_le_bytes());
-            dst[20..24].copy_from_slice(&sge3.len.to_le_bytes());
-            dst[24..32].copy_from_slice(&sge3.addr.to_le_bytes());
+        if let Some(sge2) = sge2 {
+            dst[16..20].copy_from_slice(&sge2.key.to_le_bytes());
+            dst[20..24].copy_from_slice(&sge2.len.to_le_bytes());
+            dst[24..32].copy_from_slice(&sge2.addr.to_le_bytes());
         } else {
             dst[16..32].copy_from_slice(&[0; 16]);
         }

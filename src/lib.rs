@@ -8,6 +8,7 @@ use crate::{
     pd::PdCtx,
     qp::QpCtx,
 };
+use device::QpType;
 use std::{
     collections::{hash_map::Entry, HashMap},
     error::Error as StdError,
@@ -173,6 +174,7 @@ impl Device {
     }
 
     #[allow(clippy::too_many_arguments)]
+    // TODO: discuess whether this function should be blocking?
     pub fn write(
         &self,
         qp: Qp,
@@ -265,7 +267,9 @@ impl Device {
             unreachable!()
         };
 
-        let first_pkt_len = u64::from(&qp.pmtu) - (raddr % (u64::from(&qp.pmtu) - 1));
+        let first_pkt_max_len = u64::from(&qp.pmtu) - (raddr % (u64::from(&qp.pmtu) - 1));
+
+        let first_pkt_len = total_len.min(first_pkt_max_len as u32);
         let pkt_cnt = 1 + (total_len - first_pkt_len as u32).div_ceil(u64::from(&qp.pmtu) as u32);
 
         // regain the lock.
@@ -366,46 +370,54 @@ impl Device {
             let bth_resv7_a = 0;
             let aeth_msn = [0; 3];
             let aeth_syn = 0;
+            let nreth = [0; 4];
 
-            let ack_pkt = [
+            let ack_pkt = Box::new([
                 // BTH bytes 0-3
-                bth_pkey[0],
-                bth_pkey[1],
-                bth_tver_pad_m_se,
                 bth_opcode,
+                bth_tver_pad_m_se,
+                bth_pkey[1],
+                bth_pkey[0],
                 // BTH bytes 4-7
-                bth_dqp[0],
-                bth_dqp[1],
-                bth_dqp[2],
                 bth_resv8,
+                bth_dqp[2],
+                bth_dqp[1],
+                bth_dqp[0],
                 // BTH bytes 8-11
-                bth_psn[0],
-                bth_psn[1],
-                bth_psn[2],
                 bth_resv7_a,
+                bth_psn[2],
+                bth_psn[1],
+                bth_psn[0],
                 // AETH bytes 0-3
-                aeth_msn[0],
-                aeth_msn[1],
-                aeth_msn[2],
                 aeth_syn,
-            ];
+                aeth_msn[2],
+                aeth_msn[1],
+                aeth_msn[0],
+                // NRETH bytes 0-3
+                nreth[3],
+                nreth[2],
+                nreth[1],
+                nreth[0],
+            ]);
 
             // FIXME: Will this mr leak ?
             // FIXME: MR on stack? we don't know when hardware will consume this send request. allocate it on heap!
             // FIXME: use a pre-allocated MR as ack message pool.
+            let ack_packet_len = ack_pkt.len();
+            let ack_pkt_ptr = Box::into_raw(ack_pkt) as u64;
             let mr = self
                 .reg_mr(
                     qp.pd.clone(),
-                    ack_pkt.as_ptr() as u64,
-                    ack_pkt.len() as u32,
-                    4096,
+                    ack_pkt_ptr,
+                    ack_packet_len as u32,
+                    2 * 1024 * 1024,
                     0,
                 )
                 .unwrap();
 
             let sge = Sge {
-                addr: ack_pkt.as_ptr() as u64,
-                len: ack_pkt.len() as u32,
+                addr: ack_pkt_ptr,
+                len: ack_packet_len as u32,
                 key: mr.key,
             };
 
@@ -419,7 +431,7 @@ impl Device {
                     mac_addr: qp.mac_addr,
                     pmtu: qp.pmtu.clone(),
                     flags: 0,
-                    qp_type: qp.qp_type.clone(), // FIXME: this should be fixed to RawPacket?
+                    qp_type: QpType::RawPacket, // FIXME: this should be fixed to RawPacket?
                     psn: 0,
                 },
                 is_last: true,
