@@ -1,14 +1,13 @@
 use crate::{
     device::{
-        DeviceAdaptor, EmulatedDevice, HardwareDevice, SoftwareDevice, ToCardCtrlRbDesc,
+        DeviceAdaptor, EmulatedDevice, HardwareDevice, QpType, SoftwareDevice, ToCardCtrlRbDesc,
         ToCardCtrlRbDescSge as DeviceSge, ToCardWorkRbDesc, ToCardWorkRbDescCommon,
-        ToCardWorkRbDescWrite,
+        ToCardWorkRbDescRead, ToCardWorkRbDescWrite,
     },
     mr::{MrCtx, MrPgt},
     pd::PdCtx,
     qp::QpCtx,
 };
-use device::QpType;
 use std::{
     collections::{hash_map::Entry, HashMap},
     error::Error as StdError,
@@ -47,7 +46,8 @@ struct DeviceInner<D: ?Sized> {
     qp: Mutex<HashMap<Qp, QpCtx>>,
     mr_pgt: Mutex<MrPgt>,
     ctrl_op_ctx: Mutex<HashMap<[u8; 4], CtrlOpCtx>>,
-    send_op_ctx: Mutex<HashMap<Qp, SendOpCtx>>,
+    read_op_ctx: Mutex<HashMap<Qp, ReadOpCtx>>,
+    write_op_ctx: Mutex<HashMap<Qp, WriteOpCtx>>,
     revc_pkt_map: RecvPktMap, // TODO: extend to support multiple QPs
     check_recv_pkt_comp_thread: OnceLock<Thread>,
     adaptor: D,
@@ -64,7 +64,12 @@ struct CtrlOpCtx {
     result: Option<bool>,
 }
 
-struct SendOpCtx {
+struct ReadOpCtx {
+    thread: Thread,
+    result: Option<bool>,
+}
+
+struct WriteOpCtx {
     thread: Thread,
     result: Option<bool>,
 }
@@ -97,7 +102,8 @@ impl Device {
             mr_table: Mutex::new([Self::MR_TABLE_EMPTY_ELEM; MR_TABLE_SIZE]),
             qp: Mutex::new(HashMap::new()),
             mr_pgt: Mutex::new(MrPgt::new()),
-            send_op_ctx: Mutex::new(HashMap::new()),
+            read_op_ctx: Mutex::new(HashMap::new()),
+            write_op_ctx: Mutex::new(HashMap::new()),
             ctrl_op_ctx: Mutex::new(HashMap::new()),
             revc_pkt_map: RecvPktMap::new(0, 0),
             check_recv_pkt_comp_thread: OnceLock::new(),
@@ -124,7 +130,8 @@ impl Device {
             qp: Mutex::new(HashMap::new()),
             mr_pgt: Mutex::new(MrPgt::new()),
             ctrl_op_ctx: Mutex::new(HashMap::new()),
-            send_op_ctx: Mutex::new(HashMap::new()),
+            read_op_ctx: Mutex::new(HashMap::new()),
+            write_op_ctx: Mutex::new(HashMap::new()),
             revc_pkt_map: RecvPktMap::new(0, 0),
             check_recv_pkt_comp_thread: OnceLock::new(),
             adaptor: SoftwareDevice::init().map_err(Error::Device)?,
@@ -153,7 +160,8 @@ impl Device {
             qp: Mutex::new(HashMap::new()),
             mr_pgt: Mutex::new(MrPgt::new()),
             ctrl_op_ctx: Mutex::new(HashMap::new()),
-            send_op_ctx: Mutex::new(HashMap::new()),
+            read_op_ctx: Mutex::new(HashMap::new()),
+            write_op_ctx: Mutex::new(HashMap::new()),
             revc_pkt_map: RecvPktMap::new(0, 0),
             check_recv_pkt_comp_thread: OnceLock::new(),
             adaptor: EmulatedDevice::init(rpc_server_addr, heap_mem_start_addr)
@@ -171,6 +179,87 @@ impl Device {
         thread::spawn(move || dev_for_check_recv_pkt_comp.check_recv_pkt_comp());
 
         Ok(dev)
+    }
+
+    pub fn read(&self, qp: Qp, raddr: u64, rkey: u32, flags: u8, sge: Sge) -> Result<(), Error> {
+        let mut qp_table = self.0.qp.lock().unwrap();
+        let qp_ctx = qp_table.get_mut(&qp).ok_or(Error::InvalidQp)?;
+
+        let total_len = sge.len;
+
+        let desc = ToCardWorkRbDesc::Read(ToCardWorkRbDescRead {
+            common: ToCardWorkRbDescCommon {
+                total_len,
+                raddr,
+                rkey,
+                dqp_ip: qp.dqp_ip,
+                dqpn: qp.dqpn,
+                mac_addr: qp.mac_addr,
+                pmtu: qp.pmtu.clone(),
+                flags,
+                qp_type: qp.qp_type.clone(),
+                psn: qp_ctx.send_psn,
+            },
+            sge: sge.into(),
+        });
+
+        // save operation context for unparking
+        {
+            let mut ctx = self.0.read_op_ctx.lock().unwrap();
+
+            match ctx.entry(qp.clone()) {
+                Entry::Occupied(_) => return Err(Error::QpBusy),
+                Entry::Vacant(entry) => {
+                    entry.insert(ReadOpCtx {
+                        thread: thread::current(),
+                        result: None,
+                    });
+                }
+            }
+        }
+
+        // send desc to device
+        self.0
+            .adaptor
+            .to_card_work_rb()
+            .push(desc)
+            .map_err(|_| Error::DeviceBusy)?;
+
+        drop(qp_table);
+
+        // park and wait
+        thread::park();
+
+        // unparked and poll result
+        let ReadOpCtx {
+            thread: _,
+            result: Some(result),
+        } = (loop {
+            let mut ctx = self.0.read_op_ctx.lock().unwrap();
+
+            match ctx.get(&qp) {
+                Some(ReadOpCtx {
+                    thread: _,
+                    result: Some(_),
+                }) => {}
+                Some(ReadOpCtx {
+                    thread: _,
+                    result: None,
+                }) => continue,
+                None => return Err(Error::ReadCtxLost),
+            }
+
+            break ctx.remove(&qp).unwrap();
+        })
+        else {
+            unreachable!()
+        };
+
+        if !result {
+            return Err(Error::DeviceReturnFailed);
+        }
+
+        Ok(())
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -217,12 +306,12 @@ impl Device {
 
         // save operation context for unparking
         {
-            let mut ctx = self.0.send_op_ctx.lock().unwrap();
+            let mut ctx = self.0.write_op_ctx.lock().unwrap();
 
             match ctx.entry(qp.clone()) {
                 Entry::Occupied(_) => return Err(Error::QpBusy),
                 Entry::Vacant(entry) => {
-                    entry.insert(SendOpCtx {
+                    entry.insert(WriteOpCtx {
                         thread: thread::current(),
                         result: None,
                     });
@@ -243,22 +332,22 @@ impl Device {
         thread::park();
 
         // unparked and poll result
-        let SendOpCtx {
+        let WriteOpCtx {
             thread: _,
             result: Some(result),
         } = (loop {
-            let mut ctx = self.0.send_op_ctx.lock().unwrap();
+            let mut ctx = self.0.write_op_ctx.lock().unwrap();
 
             match ctx.get(&qp) {
-                Some(SendOpCtx {
+                Some(WriteOpCtx {
                     thread: _,
                     result: Some(_),
                 }) => {}
-                Some(SendOpCtx {
+                Some(WriteOpCtx {
                     thread: _,
                     result: None,
                 }) => continue,
-                None => return Err(Error::SendCtxLost),
+                None => return Err(Error::WriteCtxLost),
             }
 
             break ctx.remove(&qp).unwrap();
@@ -356,10 +445,21 @@ impl Device {
                 thread::sleep(Duration::from_micros(100));
             }
 
-            // packet complete, send ack
+            // packet complete
 
             let mut qp_table = self.0.qp.lock().unwrap();
             let qp = qp_table.keys().next().unwrap(); // FIXME: Why call next to get a QP? too tricky?
+
+            // if the operation is read, returns result and unpark the thread
+            {
+                let mut ctx = self.0.read_op_ctx.lock().unwrap();
+                if let Some(op_ctx) = ctx.get_mut(qp) {
+                    op_ctx.result = Some(true);
+                    op_ctx.thread.unpark();
+                }
+            }
+
+            // send ack
 
             let bth_pkey = [0; 2]; // TODO: get pkey
             let bth_tver_pad_m_se = 0b00000000;
@@ -567,10 +667,10 @@ pub enum Error {
     DeviceReturnFailed,
     #[error("ongoing ctrl cmd ctx lost")]
     CtrlCtxLost,
-    #[error("ongoing send ctx lost")]
-    SendCtxLost,
-    #[error("ongoing recv ctx lost")]
-    RecvCtxLost,
+    #[error("ongoing read ctx lost")]
+    ReadCtxLost,
+    #[error("ongoing write ctx lost")]
+    WriteCtxLost,
     #[error("QP busy")]
     QpBusy,
     #[error("invalid PD handle")]
