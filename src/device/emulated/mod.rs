@@ -217,6 +217,7 @@ impl ToCardRb<ToCardWorkRbDesc> for EmulatedDevice {
     }
 }
 
+// TODO: refactor the mechanism to handle ringbuf. It's a kind of complex
 impl ToHostRb<ToHostWorkRbDesc> for EmulatedDevice {
     fn pop(&self) -> ToHostWorkRbDesc {
         loop {
@@ -237,7 +238,19 @@ impl ToHostRb<ToHostWorkRbDesc> for EmulatedDevice {
             let desc = loop {
                 match read_res {
                     Ok(desc) => break desc,
-                    Err(desc) => read_res = desc.read(mem),
+                    Err(desc) => {
+                        let Some(mem) = reader.next() else {
+                            drop(reader); // reader should be dropped to update the tail pointer
+                            panic!("no more desc");
+                        };
+                        read_res = desc.read(mem);
+                        match read_res {
+                            Ok(desc) => break desc,
+                            Err(_) => {
+                                todo!();
+                            }
+                        }
+                    }
                 }
             };
 

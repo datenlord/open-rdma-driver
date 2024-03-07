@@ -30,6 +30,7 @@ impl Device {
         let dev = self.clone();
 
         // spawn a new thread to avoid blocking the main polling thread
+        // FIXME: refactor me to support multi QP
         thread::spawn(move || {
             let res = dev.write(
                 qp,

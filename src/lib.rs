@@ -33,7 +33,7 @@ pub mod qp;
 
 pub use crate::{mr::Mr, pd::Pd, qp::Qp};
 
-const MR_KEY_IDX_BIT_CNT: usize = 10;
+const MR_KEY_IDX_BIT_CNT: usize = 8;
 const MR_TABLE_SIZE: usize = 64;
 const MR_PGT_SIZE: usize = 1024;
 

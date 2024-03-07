@@ -475,7 +475,7 @@ impl ToCardWorkRbDesc {
     pub(super) fn write_0(&self, dst: &mut [u8]) {
         let (common, opcode, is_first, is_last) = match self {
             ToCardWorkRbDesc::Read(desc) => {
-                (&desc.common, ToCardWorkRbDescOpcode::Read, false, false)
+                (&desc.common, ToCardWorkRbDescOpcode::Read, true, true)
             }
             ToCardWorkRbDesc::Write(desc) => (
                 &desc.common,
@@ -903,10 +903,8 @@ impl IncompleteToHostWorkRbDesc {
             //     ADDR                            secondaryVa;     // 64
             // } MeatReportQueueDescFragSecondaryRETH deriving(Bits, FShow);
 
-            // first 12 bytes are desc type, status and bth
-
-            let addr = u64::from_le_bytes(src[12..20].try_into().unwrap());
-            let key = u32::from_le_bytes(src[20..24].try_into().unwrap());
+            let addr = u64::from_le_bytes(src[0..8].try_into().unwrap());
+            let key = u32::from_le_bytes(src[8..12].try_into().unwrap());
 
             (addr, key)
         }
