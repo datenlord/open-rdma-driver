@@ -13,7 +13,8 @@ use std::{
     sync::atomic::{AtomicBool, Ordering},
 };
 
-const QP_MAX_CNT: usize = 1;
+// FIXME: don't use static here. It should belong to device
+const QP_MAX_CNT: usize = 2;
 static QP_AVAILABLITY: [AtomicBool; QP_MAX_CNT] = unsafe { mem::transmute([true; QP_MAX_CNT]) };
 
 #[allow(unused)]

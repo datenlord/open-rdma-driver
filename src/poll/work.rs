@@ -14,6 +14,7 @@ impl Device {
             let desc = self.0.adaptor.to_host_work_rb().pop();
 
             // TODO: check desca status
+            eprintln!("recv hardware report metadata");
 
             match desc {
                 ToHostWorkRbDesc::Read(desc) => self.handle_work_desc_read(desc),
@@ -26,6 +27,7 @@ impl Device {
     }
 
     fn handle_work_desc_read(&self, desc: ToHostWorkRbDescRead) {
+        eprintln!("in handle_work_desc_read");
         let qp = self.0.qp.lock().unwrap().keys().next().unwrap().clone();
         let dev = self.clone();
 
@@ -54,6 +56,7 @@ impl Device {
     }
 
     fn handle_work_desc_write(&self, desc: ToHostWorkRbDescWrite) {
+        eprintln!("in handle_work_desc_write");
         let pkt_map = unsafe {
             (&self.0.revc_pkt_map as *const _ as *mut RecvPktMap)
                 .as_mut()
@@ -79,6 +82,10 @@ impl Device {
             let pkt_cnt =
                 1 + (real_payload_len - first_pkt_len as u32).div_ceil(u64::from(&qp.pmtu) as u32);
 
+            eprintln!(
+                "RecvPktMap::new, pkt_cnt={}, start_psn={}",
+                pkt_cnt, qp_ctx.recv_psn
+            );
             *pkt_map = RecvPktMap::new(pkt_cnt as usize, qp_ctx.recv_psn);
 
             // unblock recv_pkt_comp_thread
@@ -93,6 +100,7 @@ impl Device {
     }
 
     fn handle_work_desc_ack(&self, _desc: ToHostWorkRbDescAck) {
+        eprintln!("in handle_work_desc_ack");
         let mut ctx_map = self.0.write_op_ctx.lock().unwrap();
 
         let Some((_, ctx)) = ctx_map.iter_mut().next() else {

@@ -531,7 +531,7 @@ impl Device {
                     mac_addr: qp.mac_addr,
                     pmtu: qp.pmtu.clone(),
                     flags: 0,
-                    qp_type: QpType::RawPacket, // FIXME: this should be fixed to RawPacket?
+                    qp_type: QpType::RawPacket,
                     psn: 0,
                 },
                 is_last: true,
