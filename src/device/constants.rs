@@ -1,10 +1,10 @@
-#![allow(unused)]
 
+#[allow(dead_code)]
 enum CsrIndex {
-    CsrIdxRbBaseAddrLow = 0x0,
-    CsrIdxRbBaseAddrHigh = 0x1,
-    CsrIdxRbHead = 0x2,
-    CsrIdxRbTail = 0x3,
+    BaseAddrLow = 0x0,
+    BaseAddrHigh = 0x1,
+    Head = 0x2,
+    Tail = 0x3,
 }
 
 const fn generate_csr_addr(is_h2c: bool, queue_index: usize, reg_index: CsrIndex) -> usize {
@@ -17,39 +17,51 @@ const fn generate_csr_addr(is_h2c: bool, queue_index: usize, reg_index: CsrIndex
     a
 }
 
+#[allow(dead_code)]
 pub(super) const CSR_ADDR_CMD_REQ_QUEUE_ADDR_LOW: usize =
-    generate_csr_addr(true, 0, CsrIndex::CsrIdxRbBaseAddrLow);
+    generate_csr_addr(true, 0, CsrIndex::BaseAddrLow);
+#[allow(dead_code)]
 pub(super) const CSR_ADDR_CMD_REQ_QUEUE_ADDR_HIGH: usize =
-    generate_csr_addr(true, 0, CsrIndex::CsrIdxRbBaseAddrHigh);
+    generate_csr_addr(true, 0, CsrIndex::BaseAddrHigh);
 pub(super) const CSR_ADDR_CMD_REQ_QUEUE_HEAD: usize =
-    generate_csr_addr(true, 0, CsrIndex::CsrIdxRbHead);
+    generate_csr_addr(true, 0, CsrIndex::Head);
+#[allow(dead_code)]
 pub(super) const CSR_ADDR_CMD_REQ_QUEUE_TAIL: usize =
-    generate_csr_addr(true, 0, CsrIndex::CsrIdxRbTail);
-
+    generate_csr_addr(true, 0, CsrIndex::Tail);
+#[allow(dead_code)]
 pub(super) const CSR_ADDR_CMD_RESP_QUEUE_HEAD: usize =
-    generate_csr_addr(false, 0, CsrIndex::CsrIdxRbHead);
+    generate_csr_addr(false, 0, CsrIndex::Head);
+#[allow(dead_code)]
 pub(super) const CSR_ADDR_CMD_RESP_QUEUE_TAIL: usize =
-    generate_csr_addr(false, 0, CsrIndex::CsrIdxRbTail);
+    generate_csr_addr(false, 0, CsrIndex::Tail);
+#[allow(dead_code)]
 pub(super) const CSR_ADDR_CMD_RESP_QUEUE_ADDR_LOW: usize =
-    generate_csr_addr(false, 0, CsrIndex::CsrIdxRbBaseAddrLow);
+    generate_csr_addr(false, 0, CsrIndex::BaseAddrLow);
+#[allow(dead_code)]
 pub(super) const CSR_ADDR_CMD_RESP_QUEUE_ADDR_HIGH: usize =
-    generate_csr_addr(false, 0, CsrIndex::CsrIdxRbBaseAddrHigh);
-
+    generate_csr_addr(false, 0, CsrIndex::BaseAddrHigh);
+#[allow(dead_code)]
 pub(super) const CSR_ADDR_SEND_QUEUE_HEAD: usize =
-    generate_csr_addr(true, 1, CsrIndex::CsrIdxRbHead);
+    generate_csr_addr(true, 1, CsrIndex::Head);
+#[allow(dead_code)]
 pub(super) const CSR_ADDR_SEND_QUEUE_TAIL: usize =
-    generate_csr_addr(true, 1, CsrIndex::CsrIdxRbTail);
+    generate_csr_addr(true, 1, CsrIndex::Tail);
+#[allow(dead_code)]
 pub(super) const CSR_ADDR_SEND_QUEUE_ADDR_LOW: usize =
-    generate_csr_addr(true, 1, CsrIndex::CsrIdxRbBaseAddrLow);
+    generate_csr_addr(true, 1, CsrIndex::BaseAddrLow);
+#[allow(dead_code)]
 pub(super) const CSR_ADDR_SEND_QUEUE_ADDR_HIGH: usize =
-    generate_csr_addr(true, 1, CsrIndex::CsrIdxRbBaseAddrHigh);
-
+    generate_csr_addr(true, 1, CsrIndex::BaseAddrHigh);
+#[allow(dead_code)]
 pub(super) const CSR_ADDR_META_REPORT_QUEUE_HEAD: usize =
-    generate_csr_addr(false, 1, CsrIndex::CsrIdxRbHead);
+    generate_csr_addr(false, 1, CsrIndex::Head);
+#[allow(dead_code)]
 pub(super) const CSR_ADDR_META_REPORT_QUEUE_TAIL: usize =
-    generate_csr_addr(false, 1, CsrIndex::CsrIdxRbTail);
+    generate_csr_addr(false, 1, CsrIndex::Tail);
+#[allow(dead_code)]
 pub(super) const CSR_ADDR_META_REPORT_QUEUE_ADDR_LOW: usize =
-    generate_csr_addr(false, 1, CsrIndex::CsrIdxRbBaseAddrLow);
+    generate_csr_addr(false, 1, CsrIndex::BaseAddrLow);
+#[allow(dead_code)]
 pub(super) const CSR_ADDR_META_REPORT_QUEUE_ADDR_HIGH: usize =
     generate_csr_addr(false, 1, CsrIndex::CsrIdxRbBaseAddrHigh);
 

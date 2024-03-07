@@ -941,3 +941,18 @@ impl From<&Pmtu> for u64 {
         }
     }
 }
+
+bitflags! {
+    pub struct MemAccessTypeFlag: u8 {
+        const IbvAccessNoFlags = 0;      // Not defined in rdma-core
+        const IbvAccessLocalWrite = 1;   // (1 << 0)
+        const IbvAccessRemoteWrite = 2;  // (1 << 1)
+        const IbvAccessRemoteRead = 4;   // (1 << 2)
+        const IbvAccessRemoteAtomic = 8; // (1 << 3)
+        const IbvAccessMwBind = 16;      // (1 << 4)
+        const IbvAccessZeroBased = 32;   // (1 << 5)
+        const IbvAccessOnDemand = 64;    // (1 << 6)
+        const IbvAccessHugetlb = 128;    // (1 << 7)
+                                   // IbvAccessRelaxedOrdering   = IBV_ACCESS_OPTIONAL_FIRST,
+    }
+}

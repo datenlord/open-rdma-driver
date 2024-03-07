@@ -32,6 +32,8 @@ pub mod pd;
 pub mod qp;
 
 pub use crate::{mr::Mr, pd::Pd, qp::Qp};
+pub use device::scheduler;
+pub use device::ToCardWorkRbDesc;
 
 const MR_KEY_IDX_BIT_CNT: usize = 8;
 const MR_TABLE_SIZE: usize = 64;

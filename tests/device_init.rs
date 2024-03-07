@@ -1,7 +1,7 @@
 use std::ffi::c_void;
 
 use buddy_system_allocator::LockedHeap;
-use libc;
+
 use open_rdma_driver::Device;
 
 const ORDER: usize = 32;
@@ -27,7 +27,7 @@ fn init_global_allocator() {
         );
 
         let heap = libc::mmap(
-            0 as *mut c_void,
+            std::ptr::null_mut::<c_void>(),
             1024 * 1024 * 1024,
             libc::PROT_EXEC | libc::PROT_READ | libc::PROT_WRITE,
             libc::MAP_SHARED,

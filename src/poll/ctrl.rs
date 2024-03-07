@@ -10,15 +10,18 @@ impl Device {
     pub(crate) fn poll_ctrl_rb(self) {
         loop {
             let desc = self.0.adaptor.to_host_ctrl_rb().pop();
-
-            match desc {
-                ToHostCtrlRbDesc::UpdateMrTable(desc) => {
-                    self.handle_ctrl_desc_update_mr_table(desc)
+            if let Some(desc) = desc {
+                match desc {
+                    ToHostCtrlRbDesc::UpdateMrTable(desc) => {
+                        self.handle_ctrl_desc_update_mr_table(desc)
+                    }
+                    ToHostCtrlRbDesc::UpdatePageTable(desc) => {
+                        self.handle_ctrl_desc_update_page_table(desc)
+                    }
+                    ToHostCtrlRbDesc::QpManagement(desc) => {
+                        self.handle_ctrl_desc_qp_management(desc)
+                    }
                 }
-                ToHostCtrlRbDesc::UpdatePageTable(desc) => {
-                    self.handle_ctrl_desc_update_page_table(desc)
-                }
-                ToHostCtrlRbDesc::QpManagement(desc) => self.handle_ctrl_desc_qp_management(desc),
             }
         }
     }

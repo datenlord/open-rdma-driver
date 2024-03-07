@@ -7,6 +7,9 @@ mod ringbuf;
 mod software;
 mod types;
 
+pub mod scheduler;
+pub use types::ToCardWorkRbDesc;
+
 pub(crate) use self::{
     emulated::EmulatedDevice, hardware::HardwareDevice, software::SoftwareDevice, types::*,
 };
@@ -32,10 +35,14 @@ pub(crate) trait ToCardRb<D> {
 
 /// Generic interface for a to-host ring buffer.
 pub(crate) trait ToHostRb<D> {
-    fn pop(&self) -> D;
+    fn pop(&self) -> Option<D>;
 }
 
 /// An error indicating that a ring buffer overflowed.
 #[derive(Debug, Error)]
 #[error("ring buffer overflowed")]
 pub(crate) struct Overflowed;
+
+#[derive(Debug, Error)]
+#[error("net socket failed to bind the port")]
+pub(crate) struct PortBindFailed;

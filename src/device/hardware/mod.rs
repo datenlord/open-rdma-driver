@@ -64,13 +64,13 @@ impl ToCardRb<ToCardCtrlRbDesc> for ToCardCtrlRb {
 }
 
 impl ToHostRb<ToHostCtrlRbDesc> for ToHostCtrlRb {
-    fn pop(&self) -> ToHostCtrlRbDesc {
+    fn pop(&self) -> Option<ToHostCtrlRbDesc> {
         todo!()
     }
 }
 
 impl ToHostRb<ToHostWorkRbDesc> for ToHostWorkRb {
-    fn pop(&self) -> ToHostWorkRbDesc {
+    fn pop(&self) -> Option<ToHostWorkRbDesc> {
         todo!()
     }
 }
