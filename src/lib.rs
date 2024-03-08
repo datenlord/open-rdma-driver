@@ -1,7 +1,6 @@
 use crate::{
     device::{
-        DeviceAdaptor, EmulatedDevice, HardwareDevice, QpType, SoftwareDevice, ToCardCtrlRbDesc,
-        ToCardCtrlRbDescSge as DeviceSge, ToCardWorkRbDesc, ToCardWorkRbDescCommon,
+        DeviceAdaptor, EmulatedDevice, HardwareDevice, QpType, SoftwareDevice, ToCardCtrlRbDesc, ToCardWorkRbDescCommon,
         ToCardWorkRbDescRead, ToCardWorkRbDescWrite,
     },
     mr::{MrCtx, MrPgt},
@@ -22,6 +21,7 @@ use std::{
     time::Duration,
     vec,
 };
+use device::ToCardCtrlRbDescSge;
 use thiserror::Error;
 
 mod device;
@@ -649,7 +649,7 @@ impl Iterator for MissingPkt<'_> {
     }
 }
 
-impl From<Sge> for DeviceSge {
+impl From<Sge> for ToCardCtrlRbDescSge {
     fn from(sge: Sge) -> Self {
         Self {
             addr: sge.addr,

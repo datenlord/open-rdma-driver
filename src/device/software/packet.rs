@@ -6,7 +6,7 @@ use std::{mem::size_of, net::Ipv4Addr};
 
 use thiserror::Error;
 
-use crate::device::{RdmaOpcode, TransType, AethCode};
+use crate::device::{ToHostWorkRbDescOpcode, ToHostWorkRbDescTransType, ToHostWorkRbDescAethCode};
 
 use super::types::{
     AethHeader, Metadata, PayloadInfo, RdmaGeneralMeta, RdmaMessage, RdmaMessageMetaCommon,
@@ -95,7 +95,7 @@ impl BTH {
         u32::from_be_bytes([0, self.psn[1], self.psn[2], self.psn[3]])
     }
 
-    pub fn set_opcode_and_type(&mut self, opcode: RdmaOpcode, tran_type: TransType) {
+    pub fn set_opcode_and_type(&mut self, opcode: ToHostWorkRbDescOpcode, tran_type: ToHostWorkRbDescTransType) {
         self.tran_type_and_opcode =
             (tran_type as u8) << BTH_TRANSACTION_TYPE_SHIFT | (opcode as u8);
     }
@@ -548,12 +548,12 @@ impl CommonPacketHeader {
 pub enum PacketError {
     #[error("Header gets an invalid opcode")]
     InvalidOpcode,
-    #[error("Convert TransType failed")]
-    FailedToConvertTransType(#[from] num_enum::TryFromPrimitiveError<TransType>),
-    #[error("Convert RdmaOpcode failed")]
-    FailedToConvertRdmaOpcode(#[from] num_enum::TryFromPrimitiveError<RdmaOpcode>),
-    #[error("Convert AethCode failed")]
-    FailedToConvertAethCode(#[from] num_enum::TryFromPrimitiveError<AethCode>),
+    #[error("Convert ToHostWorkRbDescTransType failed")]
+    FailedToConvertTransType(#[from] num_enum::TryFromPrimitiveError<ToHostWorkRbDescTransType>),
+    #[error("Convert ToHostWorkRbDescOpcode failed")]
+    FailedToConvertRdmaOpcode(#[from] num_enum::TryFromPrimitiveError<ToHostWorkRbDescOpcode>),
+    #[error("Convert ToHostWorkRbDescAethCode failed")]
+    FailedToConvertAethCode(#[from] num_enum::TryFromPrimitiveError<ToHostWorkRbDescAethCode>),
     #[error("Invalid Metadata type")]
     InvalidMetadataType,
 }

@@ -1,5 +1,6 @@
 #![allow(unused)]
 
+use bitflags::bitflags;
 use num_enum::TryFromPrimitive;
 use std::{net::Ipv4Addr, ops::Range};
 
@@ -15,7 +16,8 @@ pub(crate) enum ToHostCtrlRbDesc {
     QpManagement(ToHostCtrlRbDescQpManagement),
 }
 
-pub(crate) enum ToCardWorkRbDesc {
+#[derive(Clone)]
+pub enum ToCardWorkRbDesc {
     Read(ToCardWorkRbDescRead),
     Write(ToCardWorkRbDescWrite),
     WriteWithImm(ToCardWorkRbDescWriteWithImm),
@@ -77,6 +79,7 @@ pub(crate) struct ToHostCtrlRbDescQpManagement {
     pub(crate) common: ToHostCtrlRbDescCommon,
 }
 
+#[derive(Clone)]
 pub(crate) struct ToCardWorkRbDescCommon {
     pub(crate) total_len: u32,
     pub(crate) raddr: u64,
@@ -90,11 +93,13 @@ pub(crate) struct ToCardWorkRbDescCommon {
     pub(crate) psn: u32,
 }
 
+#[derive(Clone)]
 pub(crate) struct ToCardWorkRbDescRead {
     pub(crate) common: ToCardWorkRbDescCommon,
     pub(crate) sge: ToCardCtrlRbDescSge,
 }
 
+#[derive(Clone)]
 pub(crate) struct ToCardWorkRbDescWrite {
     pub(crate) common: ToCardWorkRbDescCommon,
     pub(crate) is_last: bool,
@@ -105,6 +110,7 @@ pub(crate) struct ToCardWorkRbDescWrite {
     pub(crate) sge3: Option<ToCardCtrlRbDescSge>,
 }
 
+#[derive(Clone)]
 pub(crate) struct ToCardWorkRbDescWriteWithImm {
     pub(crate) common: ToCardWorkRbDescCommon,
     pub(crate) is_last: bool,
@@ -165,7 +171,7 @@ pub(crate) struct ToHostWorkRbDescNack {
     pub(crate) lost_psn: Range<u32>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub(crate) enum Pmtu {
     Mtu256 = 1,
     Mtu512 = 2,
@@ -175,7 +181,7 @@ pub(crate) enum Pmtu {
 }
 
 // TODO, there are two QpType definition in the code, remove one?
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub(crate) enum QpType {
     Rc = 2,
     Uc = 3,
@@ -185,6 +191,7 @@ pub(crate) enum QpType {
     XrcRecv = 10,
 }
 
+#[derive(Debug, Clone, Copy)]
 pub(crate) struct ToCardCtrlRbDescSge {
     pub(crate) addr: u64,
     pub(crate) len: u32,
@@ -202,7 +209,13 @@ pub(crate) enum ToHostWorkRbDescStatus {
     Unknown = 6,
 }
 
-#[derive(TryFromPrimitive)]
+impl ToHostWorkRbDescStatus {
+    pub(crate) fn is_ok(&self) -> bool {
+        matches!(self, ToHostWorkRbDescStatus::Normal)
+    }
+}
+
+#[derive(TryFromPrimitive, Debug, Clone, Copy)]
 #[repr(u8)]
 pub(crate) enum ToHostWorkRbDescTransType {
     Rc = 0x00,
@@ -233,7 +246,8 @@ enum CtrlRbDescOpcode {
     QpManagement = 0x02,
 }
 
-enum ToCardWorkRbDescOpcode {
+#[derive(Clone, Copy)]
+pub(crate) enum ToCardWorkRbDescOpcode {
     // IBV_WR_RDMA_WRITE           =  0,
     // IBV_WR_RDMA_WRITE_WITH_IMM  =  1,
     // IBV_WR_SEND                 =  2,
@@ -252,11 +266,12 @@ enum ToCardWorkRbDescOpcode {
     Write = 0,
     WriteWithImm = 1,
     Read = 4,
+    ReadResp = 12, // Not defined in rdma-core
 }
 
-#[derive(TryFromPrimitive)]
+#[derive(TryFromPrimitive, PartialEq, Eq, Debug, Clone, Copy)]
 #[repr(u8)]
-enum ToHostWorkRbDescOpcode {
+pub(crate) enum ToHostWorkRbDescOpcode {
     // SendFirst = 0x00,
     // SendMiddle = 0x01,
     // SendLast = 0x02,
@@ -270,10 +285,6 @@ enum ToHostWorkRbDescOpcode {
     // RdmaWriteOnly = 0x0a,
     // RdmaWriteOnlyWithImmediate = 0x0b,
     // RdmaReadRequest = 0x0c,
-    // RdmaReadResponseFirst = 0x0d,
-    // RdmaReadResponseMiddle = 0x0e,
-    // RdmaReadResponseLast = 0x0f,
-    // RdmaReadResponseOnly = 0x10,
     // Acknowledge = 0x11,
     // AtomicAcknowledge = 0x12,
     // CompareSwap = 0x13,
@@ -287,13 +298,17 @@ enum ToHostWorkRbDescOpcode {
     RdmaWriteLastWithImmediate = 0x09,
     RdmaWriteOnly = 0x0a,
     RdmaWriteOnlyWithImmediate = 0x0b,
+    RdmaReadResponseFirst = 0x0d,
+    RdmaReadResponseMiddle = 0x0e,
+    RdmaReadResponseLast = 0x0f,
+    RdmaReadResponseOnly = 0x10,
     RdmaReadRequest = 0x0c,
     Acknowledge = 0x11,
 }
 
-#[derive(TryFromPrimitive)]
+#[derive(TryFromPrimitive, Clone, PartialEq, Eq, Debug, Copy)]
 #[repr(u8)]
-enum ToHostWorkRbDescAethCode {
+pub(crate) enum ToHostWorkRbDescAethCode {
     // AETH_CODE_ACK  = 2'b00,
     // AETH_CODE_RNR  = 2'b01,
     // AETH_CODE_RSVD = 2'b10,
@@ -880,6 +895,7 @@ impl ToHostWorkRbDesc {
                     ToHostWorkRbDescAethCode::Rsvd => unimplemented!(),
                 }
             }
+            _ => unimplemented!(),
         }
     }
 
@@ -943,6 +959,7 @@ impl From<&Pmtu> for u64 {
 }
 
 bitflags! {
+    #[derive(Clone,Copy)]
     pub struct MemAccessTypeFlag: u8 {
         const IbvAccessNoFlags = 0;      // Not defined in rdma-core
         const IbvAccessLocalWrite = 1;   // (1 << 0)

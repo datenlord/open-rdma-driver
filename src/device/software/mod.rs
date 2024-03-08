@@ -22,7 +22,7 @@ mod net_agent;
 mod packet;
 mod packet_processor;
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;
 mod types;
 mod utils;
 
@@ -123,14 +123,14 @@ impl ToCardRb<ToCardCtrlRbDesc> for ToCardCtrlRb {
 }
 
 impl ToHostRb<ToHostCtrlRbDesc> for ToHostCtrlRb {
-    fn pop(&self) -> Option<ToHostCtrlRbDesc> {
+    fn pop(&self) -> ToHostCtrlRbDesc {
         todo!()
     }
 }
 
 impl ToHostRb<ToHostWorkRbDesc> for ToHostWorkRb {
-    fn pop(&self) -> Option<ToHostWorkRbDesc> {
-        self.0.pop()
+    fn pop(&self) -> ToHostWorkRbDesc {
+        self.0.pop().unwrap()
     }
 }
 

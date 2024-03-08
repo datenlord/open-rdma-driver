@@ -35,7 +35,7 @@ pub(crate) trait ToCardRb<D> {
 
 /// Generic interface for a to-host ring buffer.
 pub(crate) trait ToHostRb<D> {
-    fn pop(&self) -> Option<D>;
+    fn pop(&self) -> D;
 }
 
 /// An error indicating that a ring buffer overflowed.

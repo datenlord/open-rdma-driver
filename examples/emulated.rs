@@ -1,14 +1,11 @@
 use buddy_system_allocator::LockedHeap;
-use libc;
+
 use open_rdma_driver::{
     qp::{Pmtu, QpType},
     Device, Mr, Pd, Qp, Sge,
 };
 use std::{ffi::c_void, net::Ipv4Addr};
-use std::{
-    thread,
-    time::{self, Duration},
-};
+use std::time::{self};
 
 const ORDER: usize = 32;
 const SHM_PATH: &str = "/bluesim1\0";
@@ -33,7 +30,7 @@ fn init_global_allocator() {
         );
 
         let heap = libc::mmap(
-            0 as *mut c_void,
+            std::ptr::null_mut::<c_void>(),
             1024 * 1024 * 1024,
             libc::PROT_EXEC | libc::PROT_READ | libc::PROT_WRITE,
             libc::MAP_SHARED,

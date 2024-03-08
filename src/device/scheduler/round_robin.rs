@@ -61,7 +61,7 @@ impl SchedulerStrategy for RoundRobinStrategy {
 
 #[cfg(test)]
 mod tests {
-    use crate::{scheduler::{round_robin::RoundRobinStrategy, bench::generate_random_descriptors, SchedulerStrategy}, device::ToCardWorkRbDesc};
+    use crate::scheduler::{round_robin::RoundRobinStrategy, bench::generate_random_descriptors, SchedulerStrategy, get_to_card_desc_common};
 
     #[test]
     fn test_round_robin() {
@@ -74,10 +74,8 @@ mod tests {
         round_robin.push(qpn2, qpn2_descs);
         let result_dqpns = [1, 2, 1, 2, 2];
         for result_dqpn in result_dqpns {
-            let item = match round_robin.pop().unwrap() {
-                ToCardWorkRbDesc::Request(req) => req,
-            }
-            .dqpn;
+            let desc = round_robin.pop().unwrap();
+            let item = get_to_card_desc_common(&desc).dqpn;
             assert_eq!(item, result_dqpn);
         }
         assert!(round_robin.is_empty());
@@ -87,20 +85,16 @@ mod tests {
         round_robin.push(qpn1, qpn1_descs);
         let qpn2_descs = generate_random_descriptors(2, 3);
         round_robin.push(qpn2, qpn2_descs);
-        let item1 = match round_robin.pop().unwrap() {
-            ToCardWorkRbDesc::Request(req) => req,
-        }
-        .dqpn;
+        let desc = round_robin.pop().unwrap();
+        let item1 = get_to_card_desc_common(&desc).dqpn;
         assert_eq!(item1, 1);
         // should be {qpn1 : 3 items, qpn2 : 3 items}, next is qpn2
         let qpn1_descs = generate_random_descriptors(1, 2);
         round_robin.push(qpn1, qpn1_descs);
         let result_dqpns = [2, 1, 2, 1, 2, 1];
         for result_dqpn in result_dqpns {
-            let item = match round_robin.pop().unwrap() {
-                ToCardWorkRbDesc::Request(req) => req,
-            }
-            .dqpn;
+            let desc = round_robin.pop().unwrap();
+            let item = get_to_card_desc_common(&desc).dqpn;
             assert_eq!(item, result_dqpn);
         }
         assert!(round_robin.is_empty());
