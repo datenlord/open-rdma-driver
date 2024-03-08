@@ -106,8 +106,8 @@ pub enum Metadata {
 impl Metadata {
     pub fn get_opcode(&self) -> ToHostWorkRbDescOpcode {
         match self {
-            Metadata::General(header) => header.common_meta.opcode,
-            Metadata::Acknowledge(header) => header.common_meta.opcode,
+            Metadata::General(header) => header.common_meta.opcode.clone(),
+            Metadata::Acknowledge(header) => header.common_meta.opcode.clone(),
         }
     }
 

@@ -155,15 +155,15 @@ impl ToCardWorkRbDescBuilder {
             raddr: self.raddr.unwrap(),
             rkey: self.rkey.unwrap(),
             dqpn: self.dqpn.unwrap(),
-            pmtu: self.pmtu.unwrap(),
-            qp_type: self.qp_type.unwrap(),
+            pmtu: self.pmtu.clone().unwrap(),
+            qp_type: self.qp_type.clone().unwrap(),
             psn: self.psn.unwrap(),
             flags: self.flags.unwrap().bits(),
             dqp_ip: Ipv4Addr::new(0, 0, 0, 0),
             mac_addr: [0; 6],
         };
         let (sge0, sge1, sge2, sge3) = self.sg_list.take().unwrap().into_four_sges();
-        match self.opcode.unwrap() {
+        match self.opcode.clone().unwrap() {
             ToCardWorkRbDescOpcode::Write => ToCardWorkRbDesc::Write(ToCardWorkRbDescWrite {
                 common,
                 is_first: self.is_first.unwrap(),
@@ -315,9 +315,9 @@ impl ToCardCtrlRbDescBuilder {
                     is_valid: self.is_valid.unwrap(),
                     qpn: self.qpn.unwrap(),
                     pd_hdl: self.pd_hdl.unwrap(),
-                    qp_type: self.qp_type.unwrap(),
+                    qp_type: self.qp_type.clone().unwrap(),
                     rq_acc_flags: self.rq_acc_flags.unwrap().bits(),
-                    pmtu: self.pmtu.unwrap(),
+                    pmtu: self.pmtu.clone().unwrap(),
                 })
             }
         }

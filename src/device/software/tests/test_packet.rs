@@ -35,11 +35,11 @@ fn test_header_bth_reth() {
     match meta {
         Metadata::General(header) => {
             assert_eq!(
-                header.common_meta.tran_type as u8,
+                header.common_meta.tran_type.clone() as u8,
                 crate::device::ToHostWorkRbDescTransType::Rc as u8
             );
             assert_eq!(
-                header.common_meta.opcode as u8,
+                header.common_meta.opcode.clone() as u8,
                 ToHostWorkRbDescOpcode::RdmaWriteFirst as u8
             );
             assert!(header.common_meta.solicited);
@@ -85,11 +85,11 @@ fn test_header_bth_reth_imm() {
     match meta {
         Metadata::General(header) => {
             assert_eq!(
-                header.common_meta.tran_type as u8,
+                header.common_meta.tran_type.clone() as u8,
                 crate::device::ToHostWorkRbDescTransType::Rc as u8
             );
             assert_eq!(
-                header.common_meta.opcode as u8,
+                header.common_meta.opcode.clone() as u8,
                 ToHostWorkRbDescOpcode::RdmaWriteLastWithImmediate as u8
             );
             assert!(header.common_meta.solicited);
@@ -135,11 +135,11 @@ fn test_header_bth_reth_reth() {
     match meta {
         Metadata::General(header) => {
             assert_eq!(
-                header.common_meta.tran_type as u8,
+                header.common_meta.tran_type.clone() as u8,
                 crate::device::ToHostWorkRbDescTransType::Rc as u8
             );
             assert_eq!(
-                header.common_meta.opcode as u8,
+                header.common_meta.opcode.clone() as u8,
                 ToHostWorkRbDescOpcode::RdmaReadRequest as u8
             );
             assert!(header.common_meta.solicited);
@@ -183,11 +183,11 @@ fn test_header_bth_aeth() {
     match meta {
         Metadata::Acknowledge(header) => {
             assert_eq!(
-                header.common_meta.tran_type as u8,
+                header.common_meta.tran_type.clone() as u8,
                 crate::device::ToHostWorkRbDescTransType::Rc as u8
             );
             assert_eq!(
-                header.common_meta.opcode as u8,
+                header.common_meta.opcode.clone() as u8,
                 ToHostWorkRbDescOpcode::Acknowledge as u8
             );
             assert!(header.common_meta.solicited);
@@ -195,7 +195,7 @@ fn test_header_bth_aeth() {
             assert!(!header.common_meta.ack_req);
             assert_eq!(header.common_meta.psn.get(), 1);
             assert_eq!(header.msn, 0x123456);
-            assert_eq!(header.aeth_code as u8, 2);
+            assert_eq!(header.aeth_code.clone() as u8, 2);
             assert_eq!(header.aeth_value, 5);
         }
         _ => panic!("wrong meta data"),

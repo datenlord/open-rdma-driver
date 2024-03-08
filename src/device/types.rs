@@ -176,7 +176,7 @@ pub(crate) struct ToHostWorkRbDescNack {
     pub(crate) lost_psn: Range<u32>,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub(crate) enum Pmtu {
     Mtu256 = 1,
     Mtu512 = 2,
@@ -186,7 +186,7 @@ pub(crate) enum Pmtu {
 }
 
 // TODO, there are two QpType definition in the code, remove one?
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub(crate) enum QpType {
     Rc = 2,
     Uc = 3,
@@ -196,7 +196,7 @@ pub(crate) enum QpType {
     XrcRecv = 10,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub(crate) struct ToCardCtrlRbDescSge {
     pub(crate) addr: u64,
     pub(crate) len: u32,
@@ -220,7 +220,7 @@ impl ToHostWorkRbDescStatus {
     }
 }
 
-#[derive(TryFromPrimitive, Debug, Clone, Copy)]
+#[derive(TryFromPrimitive, Debug, Clone)]
 #[repr(u8)]
 pub(crate) enum ToHostWorkRbDescTransType {
     Rc = 0x00,
@@ -251,7 +251,7 @@ enum CtrlRbDescOpcode {
     QpManagement = 0x02,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub(crate) enum ToCardWorkRbDescOpcode {
     // IBV_WR_RDMA_WRITE           =  0,
     // IBV_WR_RDMA_WRITE_WITH_IMM  =  1,
@@ -274,7 +274,7 @@ pub(crate) enum ToCardWorkRbDescOpcode {
     ReadResp = 12, // Not defined in rdma-core
 }
 
-#[derive(TryFromPrimitive, PartialEq, Eq, Debug, Clone, Copy)]
+#[derive(TryFromPrimitive, PartialEq, Eq, Debug, Clone)]
 #[repr(u8)]
 pub(crate) enum ToHostWorkRbDescOpcode {
     // SendFirst = 0x00,
@@ -311,7 +311,7 @@ pub(crate) enum ToHostWorkRbDescOpcode {
     Acknowledge = 0x11,
 }
 
-#[derive(TryFromPrimitive, Clone, PartialEq, Eq, Debug, Copy)]
+#[derive(TryFromPrimitive, Clone, PartialEq, Eq, Debug)]
 #[repr(u8)]
 pub(crate) enum ToHostWorkRbDescAethCode {
     // AETH_CODE_ACK  = 2'b00,
@@ -405,9 +405,9 @@ impl ToCardCtrlRbDesc {
             seg0.set_is_error(false);
             seg0.set_qpn(desc.qpn as u64);
             seg0.set_pd_handler(desc.pd_hdl as u64);
-            seg0.set_qp_type(desc.qp_type as u64);
+            seg0.set_qp_type(desc.qp_type.clone() as u64);
             seg0.set_rq_access_flags(desc.rq_acc_flags as u64);
-            seg0.set_pmtu(desc.pmtu as u64);
+            seg0.set_pmtu(desc.pmtu.clone() as u64);
         }
 
         match self {
@@ -512,7 +512,7 @@ impl ToCardWorkRbDesc {
 
         let extra_segment_cnt = self.serialized_desc_cnt() - 1;
         head.set_extra_segment_cnt(extra_segment_cnt as u32);
-        head.set_total_len(common.total_len as u32);
+        head.set_total_len(common.total_len);
 
         // typedef struct {
         //     ReservedZero#(64)           reserved1;        // 64 bits

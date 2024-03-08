@@ -386,7 +386,7 @@ impl NetReceiveLogic<'_> for BlueRDMALogic {
         let meta = &message.meta_data;
         let mut common = ToHostWorkRbDescCommon {
             status: ToHostWorkRbDescStatus::Unknown,
-            trans: message.meta_data.common_meta().tran_type,
+            trans: message.meta_data.common_meta().tran_type.clone(),
             dqpn: message.meta_data.common_meta().dqpn.get(),
             pad_cnt: message.payload.get_pad_cnt() as u8,
         };

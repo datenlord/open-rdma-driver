@@ -281,7 +281,7 @@ mod test {
         pub fn build(&self) -> SGList {
             let mut sg_list = SGList::default();
             for sge in self.sg_list.iter() {
-                sg_list.data[sg_list.len as usize] = *sge;
+                sg_list.data[sg_list.len as usize] = sge.clone();
                 sg_list.len += 1;
             }
             while sg_list.len < 4 {

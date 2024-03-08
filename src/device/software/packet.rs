@@ -145,7 +145,7 @@ impl BTH {
         common_meta: &RdmaMessageMetaCommon,
         pad_cnt: usize,
     ) {
-        self.set_opcode_and_type(common_meta.opcode, common_meta.tran_type);
+        self.set_opcode_and_type(common_meta.opcode.clone(), common_meta.tran_type.clone());
         self.set_flags_solicited(common_meta.solicited);
         self.set_pad_cnt(pad_cnt);
         self.set_destination_qpn(common_meta.dqpn.get());
@@ -415,7 +415,7 @@ impl RdmaPacketHeader for RdmaHeaderRespBthAeth {
                 self.bth
                     .set_from_common_meta(&header.common_meta, message.payload.get_pad_cnt());
                 self.aeth
-                    .set_aeth_code_and_value(header.aeth_code as u8, header.aeth_value);
+                    .set_aeth_code_and_value(header.aeth_code.clone() as u8, header.aeth_value);
                 self.aeth.set_msn(header.msn);
                 Ok(size_of::<Self>())
             }
