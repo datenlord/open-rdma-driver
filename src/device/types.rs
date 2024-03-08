@@ -1,8 +1,13 @@
 #![allow(unused)]
 
+use bitfield::bitfield;
 use bitflags::bitflags;
 use num_enum::TryFromPrimitive;
-use std::{net::Ipv4Addr, ops::Range};
+use std::{
+    mem::{size_of, size_of_val},
+    net::Ipv4Addr,
+    ops::Range,
+};
 
 pub(crate) enum ToCardCtrlRbDesc {
     UpdateMrTable(ToCardCtrlRbDescUpdateMrTable),
@@ -331,18 +336,12 @@ impl ToCardCtrlRbDesc {
             //     Bool                    valid;
             // } CmdQueueDescCommonHead deriving(Bits, FShow);
 
-            let valid = (true as u8);
-            let is_success_or_need_signal_cplt = (false as u8) << 1;
-            let opcode = (opcode as u8) << 2;
-            dst[0] = valid | is_success_or_need_signal_cplt | opcode;
-
-            let extra_segment_cnt = 0;
-            dst[1] = extra_segment_cnt;
-
-            dst[2] = 0; // reserved1
-            dst[3] = 0; // reserved1
-
-            dst[4..8].copy_from_slice(&op_id);
+            let mut common = CmdQueueDescCommonHead(dst);
+            common.set_valid(true);
+            common.set_is_success_or_need_signal_cplt(false);
+            common.set_op_code(opcode as u32);
+            common.set_extra_segment_cnt(0);
+            common.set_user_data(u32::from_le_bytes(op_id));
         }
 
         fn write_update_mr_table(dst: &mut [u8], desc: &ToCardCtrlRbDescUpdateMrTable) {
@@ -357,18 +356,15 @@ impl ToCardCtrlRbDesc {
             //     CmdQueueDescCommonHead      commonHeader;
             // } CmdQueueReqDescUpdateMrTable deriving(Bits, FShow);
 
-            // bits 0-7 are header bits
+            // bytes 0-7 are header bytes, ignore them
 
-            dst[8..16].copy_from_slice(&desc.addr.to_le_bytes());
-            dst[16..20].copy_from_slice(&desc.len.to_le_bytes());
-            dst[20..24].copy_from_slice(&desc.key.to_le_bytes());
-            dst[24..28].copy_from_slice(&desc.pd_hdl.to_le_bytes());
-            dst[28] = desc.acc_flags;
-
-            let pgt_offset = desc.pgt_offset.to_le_bytes();
-            dst[29] = pgt_offset[0];
-            dst[30] = pgt_offset[1];
-            dst[31] = pgt_offset[2]; // reserved1 and last bit of pgt_offset
+            let mut update_mr_table = CmdQueueReqDescUpdateMrTable(&mut dst[8..]);
+            update_mr_table.set_mr_base_va(desc.addr);
+            update_mr_table.set_mr_length(desc.len as u64);
+            update_mr_table.set_mr_key(desc.key as u64);
+            update_mr_table.set_pd_handler(desc.pd_hdl as u64);
+            update_mr_table.set_acc_flags(desc.acc_flags as u64);
+            update_mr_table.set_pgt_offset(desc.pgt_offset as u64);
         }
 
         fn write_update_page_table(dst: &mut [u8], desc: &ToCardCtrlRbDescUpdatePageTable) {
@@ -381,11 +377,10 @@ impl ToCardCtrlRbDesc {
             // } CmdQueueReqDescUpdatePGT deriving(Bits, FShow);
 
             // bits 0-7 are header bits
-
-            dst[8..16].copy_from_slice(&desc.start_addr.to_le_bytes());
-            dst[16..20].copy_from_slice(&desc.pgt_idx.to_le_bytes());
-            dst[20..24].copy_from_slice(&(desc.pgte_cnt * 8).to_le_bytes());
-            dst[24..32].copy_from_slice(&[0; 8]);
+            let mut update_pgt = CmdQueueReqDescUpdatePGT(dst);
+            update_pgt.set_dma_addr(desc.start_addr);
+            update_pgt.set_start_index(desc.pgt_idx as u64);
+            update_pgt.set_dma_read_length((desc.pgte_cnt * 8) as u64);
         }
 
         fn write_qp_management(dst: &mut [u8], desc: &ToCardCtrlRbDescQpManagement) {
@@ -404,24 +399,15 @@ impl ToCardCtrlRbDesc {
             //     CmdQueueDescCommonHead          commonHeader;   // 64  bits
             // } CmdQueueReqDescQpManagementSeg0 deriving(Bits, FShow);
 
-            // bits 0-7 are header bits
-
-            let is_valid = (desc.is_valid as u8);
-            let is_error = (false as u8) << 1;
-            dst[8] = is_valid | is_error; // and reserved4
-
-            let qpn = desc.qpn.to_le_bytes();
-            dst[9..12].copy_from_slice(&qpn[0..3]);
-
-            dst[12..16].copy_from_slice(&desc.pd_hdl.to_le_bytes());
-
-            dst[16] = desc.qp_type.clone() as u8; // and reserved3
-
-            dst[17] = desc.rq_acc_flags;
-
-            dst[18] = desc.pmtu.clone() as u8; // and reserved2
-
-            dst[19..32].copy_from_slice(&[0; 13]); // reserved1
+            // bytes[0..7] have been padding in `CmdQueueReqDescQpManagementSeg0``
+            let mut seg0 = CmdQueueReqDescQpManagementSeg0(dst);
+            seg0.set_is_valid(desc.is_valid);
+            seg0.set_is_error(false);
+            seg0.set_qpn(desc.qpn as u64);
+            seg0.set_pd_handler(desc.pd_hdl as u64);
+            seg0.set_qp_type(desc.qp_type as u64);
+            seg0.set_rq_access_flags(desc.rq_acc_flags as u64);
+            seg0.set_pmtu(desc.pmtu as u64);
         }
 
         match self {
@@ -455,16 +441,17 @@ impl ToHostCtrlRbDesc {
         //     Bool                    isSuccessOrNeedSignalCplt;
         //     Bool                    valid;
         // } CmdQueueDescCommonHead deriving(Bits, FShow);
+        let mut head = CmdQueueDescCommonHead(src);
 
-        let valid = (src[0] & 0b00000001) != 0;
+        let valid = head.get_valid();
         assert!(valid);
 
-        let extra_segment_cnt = src[1] & 0b00001111;
+        let extra_segment_cnt = head.get_extra_segment_cnt();
         assert!(extra_segment_cnt == 0);
 
-        let is_success = (src[0] >> 1) & 0b00000001 != 0;
-        let opcode = CtrlRbDescOpcode::try_from(src[0] >> 2 & 0b00111111).unwrap();
-        let op_id = src[4..8].try_into().unwrap();
+        let is_success = head.get_is_success_or_need_signal_cplt();
+        let opcode = CtrlRbDescOpcode::try_from(head.get_op_code() as u8).unwrap();
+        let op_id = head.get_user_data().to_le_bytes();
 
         let common = ToHostCtrlRbDescCommon { op_id, is_success };
 
@@ -516,21 +503,16 @@ impl ToCardWorkRbDesc {
         //     Bool                    isSuccessOrNeedSignalCplt;      //  1 bits
         //     Bool                    valid;                          //  1 bit
         // } SendQueueDescCommonHead deriving(Bits, FShow);
-
-        let valid = true as u8;
-        let is_success_or_need_signal_cplt = (false as u8) << 1;
-        let is_first = (is_first as u8) << 2;
-        let is_last = (is_last as u8) << 3;
-        let opcode = (opcode as u8) << 4;
-
-        dst[0] = valid | is_success_or_need_signal_cplt | is_first | is_last | opcode;
+        let mut head = SendQueueDescCommonHead(dst);
+        head.set_valid(true);
+        head.set_is_success_or_need_signal_cplt(false);
+        head.set_is_first(is_first);
+        head.set_is_last(is_last);
+        head.set_op_code(opcode as u32);
 
         let extra_segment_cnt = self.serialized_desc_cnt() - 1;
-        dst[1] = extra_segment_cnt as u8; // extraSegmentCnt and reserved1
-
-        dst[2..4].copy_from_slice(&[0; 2]); // reserved1
-
-        dst[4..8].copy_from_slice(&common.total_len.to_le_bytes());
+        head.set_extra_segment_cnt(extra_segment_cnt as u32);
+        head.set_total_len(common.total_len as u32);
 
         // typedef struct {
         //     ReservedZero#(64)           reserved1;        // 64 bits
@@ -539,11 +521,13 @@ impl ToCardWorkRbDesc {
         //     ADDR                        raddr;            // 64 bits
         //     SendQueueDescCommonHead     commonHeader;     // 64 bits
         // } SendQueueReqDescSeg0 deriving(Bits, FShow);
-
-        dst[8..16].copy_from_slice(&common.raddr.to_le_bytes());
-        dst[16..20].copy_from_slice(&common.rkey.to_le_bytes());
-        dst[20..24].copy_from_slice(&common.dqp_ip.octets());
-        dst[24..32].copy_from_slice(&[0; 8]); // reserved1
+        // let mut seg0 = SendQueueReqDescSeg0(&mut dst[8..]);
+        let dst = &mut head.0[8..32];
+        let mut head = SendQueueReqDescSeg0(dst);
+        head.set_raddr(common.raddr);
+        head.set_rkey(common.rkey as u64);
+        // TODO: check if this is correct
+        head.set_dqp_ip(u32::from_le_bytes(common.dqp_ip.octets()) as u64);
     }
 
     pub(super) fn write_1(&self, dst: &mut [u8]) {
@@ -589,28 +573,29 @@ impl ToCardWorkRbDesc {
                     + desc.sge3.is_some() as u8,
             ),
         };
-
-        dst[0] = common.pmtu.clone() as u8; // and reserved8
-        dst[1] = common.flags; // and reserved7
-        dst[2] = common.qp_type.clone() as u8; // and reserved6
-        dst[3] = sge_cnt; // and reserved5
-
-        dst[4..7].copy_from_slice(&common.psn.to_le_bytes()[0..3]);
-        dst[7] = 0; // reserved4
-
-        dst[8..14].copy_from_slice(&common.mac_addr);
-        dst[14..16].copy_from_slice(&[0; 2]); // reserved3
-
-        dst[16..19].copy_from_slice(&common.dqpn.to_le_bytes()[0..3]);
-        dst[19] = 0; // reserved2
+        let mut desc_common = SendQueueReqDescSeg1(dst);
+        desc_common.set_pmtu(common.pmtu.clone() as u64);
+        desc_common.set_flags(common.flags as u64);
+        desc_common.set_qp_type(common.qp_type.clone() as u64);
+        desc_common.set_seg_cnt(sge_cnt as u64);
+        desc_common.set_psn(common.psn as u64);
+        desc_common.set_mac_addr(u64::from_le_bytes([
+            common.mac_addr[0],
+            common.mac_addr[1],
+            common.mac_addr[2],
+            common.mac_addr[3],
+            common.mac_addr[4],
+            common.mac_addr[5],
+            0,
+            0,
+        ]));
+        desc_common.set_dqpn(common.dqpn as u64);
 
         if let ToCardWorkRbDesc::WriteWithImm(desc) = self {
-            dst[20..24].copy_from_slice(&desc.imm);
+            desc_common.set_imm(u32::from_le_bytes(desc.imm) as u64);
         } else {
-            dst[20..24].copy_from_slice(&[0; 4]);
+            desc_common.set_imm(0);
         }
-
-        dst[24..32].copy_from_slice(&[0; 8]); // reserved1
     }
 
     pub(super) fn write_2(&self, dst: &mut [u8]) {
@@ -631,14 +616,16 @@ impl ToCardWorkRbDesc {
             ToCardWorkRbDesc::WriteWithImm(desc) => (&desc.sge0, desc.sge1.as_ref()),
         };
 
-        dst[16..20].copy_from_slice(&sge0.key.to_le_bytes());
-        dst[20..24].copy_from_slice(&sge0.len.to_le_bytes());
-        dst[24..32].copy_from_slice(&sge0.addr.to_le_bytes());
+        let mut frag_sge = SendQueueReqDescFragSGE(&mut dst[16..32]);
+        frag_sge.set_laddr(sge0.addr);
+        frag_sge.set_len(sge0.len as u64);
+        frag_sge.set_lkey(sge0.key as u64);
 
+        let mut frag_sge = SendQueueReqDescFragSGE(&mut dst[0..16]);
         if let Some(sge1) = sge1 {
-            dst[0..4].copy_from_slice(&sge1.key.to_le_bytes());
-            dst[4..8].copy_from_slice(&sge1.len.to_le_bytes());
-            dst[8..16].copy_from_slice(&sge1.addr.to_le_bytes());
+            frag_sge.set_laddr(sge1.addr);
+            frag_sge.set_len(sge1.len as u64);
+            frag_sge.set_lkey(sge1.key as u64);
         } else {
             dst[0..16].copy_from_slice(&[0; 16]);
         }
@@ -662,20 +649,26 @@ impl ToCardWorkRbDesc {
             ToCardWorkRbDesc::WriteWithImm(desc) => (desc.sge2.as_ref(), desc.sge3.as_ref()),
         };
 
+        let mut frag_sge = SendQueueReqDescFragSGE(&mut dst[0..16]);
         if let Some(sge3) = sge3 {
-            dst[0..4].copy_from_slice(&sge3.key.to_le_bytes());
-            dst[4..8].copy_from_slice(&sge3.len.to_le_bytes());
-            dst[8..16].copy_from_slice(&sge3.addr.to_le_bytes());
+            frag_sge.set_lkey(sge3.key as u64);
+            frag_sge.set_len(sge3.len as u64);
+            frag_sge.set_laddr(sge3.addr);
         } else {
-            dst[8..16].copy_from_slice(&[0; 16]);
+            frag_sge.set_lkey(0);
+            frag_sge.set_len(0);
+            frag_sge.set_laddr(0);
         }
 
+        let mut frag_sge = SendQueueReqDescFragSGE(&mut dst[16..32]);
         if let Some(sge2) = sge2 {
-            dst[16..20].copy_from_slice(&sge2.key.to_le_bytes());
-            dst[20..24].copy_from_slice(&sge2.len.to_le_bytes());
-            dst[24..32].copy_from_slice(&sge2.addr.to_le_bytes());
+            frag_sge.set_lkey(sge2.key as u64);
+            frag_sge.set_len(sge2.len as u64);
+            frag_sge.set_laddr(sge2.addr);
         } else {
-            dst[16..32].copy_from_slice(&[0; 16]);
+            frag_sge.set_lkey(0);
+            frag_sge.set_len(0);
+            frag_sge.set_laddr(0);
         }
     }
 
@@ -701,10 +694,10 @@ impl ToHostWorkRbDesc {
             // } MeatReportQueueDescFragRETH deriving(Bits, FShow);
 
             // first 12 bytes are desc type, status and bth
-
-            let addr = u64::from_le_bytes(src[12..20].try_into().unwrap());
-            let key = u32::from_le_bytes(src[20..24].try_into().unwrap());
-            let len = u32::from_le_bytes(src[24..28].try_into().unwrap());
+            let mut frag_reth = MeatReportQueueDescFragRETH(&src[12..]);
+            let addr = frag_reth.get_va();
+            let key = frag_reth.get_rkey() as u32;
+            let len = frag_reth.get_dlen() as u32;
 
             (addr, key, len)
         }
@@ -715,8 +708,8 @@ impl ToHostWorkRbDesc {
             // } MeatReportQueueDescFragImmDT deriving(Bits, FShow);
 
             // first 28 bytes are desc type, status, bth and reth
-
-            src[28..32].try_into().unwrap()
+            let mut imm = MeatReportQueueDescFragImmDT(&src[28..32]);
+            imm.get_imm().to_le_bytes()
         }
 
         // (last_psn, msn, value, code)
@@ -729,11 +722,11 @@ impl ToHostWorkRbDesc {
             // } MeatReportQueueDescFragAETH deriving(Bits, FShow);
 
             // first 12 bytes are desc type, status and bth
-
-            let psn = u32::from_le_bytes([src[12], src[13], src[14], 0]);
-            let msn = u32::from_le_bytes([src[15], src[16], src[17], 0]);
-            let value = src[18] & 0b00011111;
-            let code = ToHostWorkRbDescAethCode::try_from((src[18] >> 5) & 0b00000111).unwrap();
+            let mut frag_aeth = MeatReportQueueDescFragAETH(&src[12..]);
+            let psn = frag_aeth.get_psn();
+            let msn = frag_aeth.get_msn();
+            let value = frag_aeth.get_aeth_value() as u8;
+            let code = ToHostWorkRbDescAethCode::try_from(frag_aeth.get_aeth_code() as u8).unwrap();
 
             (psn, msn, value, code)
         }
@@ -745,11 +738,11 @@ impl ToHostWorkRbDesc {
         //     ReservedZero#(23)               reserved2;      // 23
         //     MeatReportQueueDescType         descType;       // 1
         // } MeatReportQueueDescBth deriving(Bits, FShow);
-
-        let is_pkt_meta = (src[0] & 0b00000001) == 0;
+        let desc_bth = MeatReportQueueDescBth(&src[0..32]);
+        let is_pkt_meta = desc_bth.get_desc_type();
         assert!(is_pkt_meta); // only support pkt meta for now
 
-        let status = ToHostWorkRbDescStatus::try_from(src[3]).unwrap();
+        let status = ToHostWorkRbDescStatus::try_from(desc_bth.get_req_status() as u8).unwrap();
 
         // typedef struct {
         //     ReservedZero#(4)                reserved1;    // 4
@@ -762,11 +755,13 @@ impl ToHostWorkRbDesc {
         //     TransType                       trans;        // 3
         // } MeatReportQueueDescFragBTH deriving(Bits, FShow);
 
-        let trans = ToHostWorkRbDescTransType::try_from(src[4] & 0b00000111).unwrap();
-        let opcode = ToHostWorkRbDescOpcode::try_from((src[4] >> 3) & 0b00011111).unwrap();
-        let dqpn = u32::from_le_bytes([src[5], src[6], src[7], 0]);
-        let psn = u32::from_le_bytes([src[8], src[9], src[10], 0]);
-        let pad_cnt = (src[11] >> 2) & 0b00000111;
+        let desc_frag_bth = MeatReportQueueDescFragBTH(&src[4..32]);
+        let trans =
+            ToHostWorkRbDescTransType::try_from(desc_frag_bth.get_trans_type() as u8).unwrap();
+        let opcode = ToHostWorkRbDescOpcode::try_from(desc_frag_bth.get_opcode() as u8).unwrap();
+        let dqpn = desc_frag_bth.get_qpn();
+        let psn = desc_frag_bth.get_psn();
+        let pad_cnt = desc_frag_bth.get_pad_cnt() as u8;
 
         let common = ToHostWorkRbDescCommon {
             status,
@@ -918,9 +913,9 @@ impl IncompleteToHostWorkRbDesc {
             //     RKEY                            secondaryRkey;   // 32
             //     ADDR                            secondaryVa;     // 64
             // } MeatReportQueueDescFragSecondaryRETH deriving(Bits, FShow);
-
-            let addr = u64::from_le_bytes(src[0..8].try_into().unwrap());
-            let key = u32::from_le_bytes(src[8..12].try_into().unwrap());
+            let secondary_reth = MeatReportQueueDescFragSecondaryRETH(&src);
+            let addr = secondary_reth.get_secondary_va();
+            let key = secondary_reth.get_secondary_rkey() as u32;
 
             (addr, key)
         }
@@ -956,6 +951,160 @@ impl From<&Pmtu> for u64 {
             Pmtu::Mtu4096 => 4096,
         }
     }
+}
+
+bitfield! {
+    struct CmdQueueDescCommonHead([u8]);
+    u32;
+    get_valid , set_valid: 0;
+    get_is_success_or_need_signal_cplt, set_is_success_or_need_signal_cplt: 1;
+    get_op_code, set_op_code: 7, 2;
+    get_extra_segment_cnt, set_extra_segment_cnt: 11, 8;
+    _reserverd, _: 31, 12;
+    get_user_data, set_user_data: 63, 32;
+}
+
+bitfield! {
+    struct CmdQueueReqDescUpdateMrTable([u8]);
+    u64;
+    _cmd_queue_desc_common_head,_: 63, 0;      // 64bits
+    get_mr_base_va, set_mr_base_va: 127, 64;   // 64bits
+    get_mr_length, set_mr_length: 159, 128;    // 32bits
+    get_mr_key, set_mr_key: 191, 160;          // 32bits
+    get_pd_handler, set_pd_handler: 223, 192;  // 32bits
+    get_acc_flags, set_acc_flags: 231, 224;    // 8bits
+    get_pgt_offset, set_pgt_offset: 248, 232;  // 17bits
+    _reserved0, _: 255, 249;                   // 7bits
+}
+
+bitfield! {
+    struct CmdQueueReqDescUpdatePGT([u8]);
+    u64;
+    __cmd_queue_desc_common_head,_ : 63, 0;             // 64bits
+    get_dma_addr, set_dma_addr: 127, 64;                // 64bits
+    get_start_index, set_start_index: 159, 128;         // 32bits
+    get_dma_read_length, set_dma_read_length: 191, 160; // 32bits
+    _reserved0, _: 255, 192;                            // 64bits
+}
+
+bitfield! {
+    struct CmdQueueReqDescQpManagementSeg0([u8]);
+    u64;
+    _cmd_queue_desc_common_head,_: 63, 0;                                       // 64bits
+    get_is_valid, set_is_valid: 64;                                             // 1bit
+    get_is_error, set_is_error: 65;                                             // 1bit
+    _reserverd4, _: 71, 66;                                                     // 6bits
+    get_qpn, set_qpn: 96, 72;                                                   // 24bits
+    get_pd_handler, set_pd_handler: 128, 97;                                    // 32bits
+    get_qp_type, set_qp_type: 132, 129;                                         // 4bits
+    _reserverd3, _: 136, 133;                                                   // 4bits
+    get_rq_access_flags, set_rq_access_flags: 144, 137;                         // 8bits
+    get_pmtu, set_pmtu: 147, 145;                                               // 3bits
+    _reserverd2, _: 151, 148;                                                   // 5bits
+    _reserverd1, _: 255, 152;                                                   // 104bits
+}
+
+bitfield! {
+    struct SendQueueDescCommonHead([u8]);
+    u32;
+    get_valid , set_valid: 0;                                                  // 1bit
+    get_is_success_or_need_signal_cplt, set_is_success_or_need_signal_cplt: 1; // 1bit
+    get_is_first, set_is_first: 2;                                             // 1bit
+    get_is_last, set_is_last: 3;                                               // 1bit
+    get_op_code, set_op_code: 7, 4;                                            // 4bits
+    get_extra_segment_cnt, set_extra_segment_cnt: 11, 8;                       // 4bits
+    _reserverd, _: 31, 12;                                                     // 20bits
+    get_total_len, set_total_len: 63, 32;                                      // 32bits
+}
+
+bitfield! {
+    struct SendQueueReqDescSeg0([u8]);
+    u64;
+    _common_header, _: 63, 0;         // 64bits
+    get_raddr, set_raddr: 127, 64;    // 64bits
+    get_rkey, set_rkey: 159, 128;     // 32bits
+    get_dqp_ip, set_dqp_ip: 191, 160; // 32bits
+    _reserverd, _: 255, 192;          // 64bits
+}
+
+bitfield! {
+    struct SendQueueReqDescSeg1([u8]);
+    u64;
+    get_pmtu, set_pmtu: 2, 0;             // 3bits
+    _reserved8 , _: 7, 3;                 // 5bits
+    get_flags, set_flags: 12, 8;          // 5bits
+    _reserved7 , _: 15, 13;               // 3bits
+    get_qp_type, set_qp_type: 19, 16;     // 4bits
+    _reserved6 , _: 23, 20;               // 4bits
+    get_seg_cnt, set_seg_cnt: 26, 24;     // 3bits
+    _reserved5 , _: 31, 27;               // 5bits
+    get_psn, set_psn: 63, 32;             // 32bits
+    _reserved4 , _: 71, 64;               // 8bits
+    get_mac_addr, set_mac_addr: 119, 72;  // 48bits
+    _reserved3 , _: 135, 120;             // 16bits
+    get_dqpn, set_dqpn: 159, 136;         // 24bits
+    _reserved2 , _: 167, 160;             // 8bits
+    get_imm, set_imm: 191, 168;           // 32bits
+    _reserved1 , _: 255, 192;             // 64bits
+}
+
+bitfield! {
+    struct SendQueueReqDescFragSGE([u8]);
+    u64;
+    get_lkey, set_lkey: 31, 0;     // 32bits
+    get_len, set_len: 63, 32;      // 32bits
+    get_laddr, set_laddr: 127, 64; // 64bits
+}
+
+bitfield! {
+    struct MeatReportQueueDescFragRETH([u8]);
+    u64;
+    get_va, set_va: 63, 0;          // 64bits
+    get_rkey, set_rkey: 95, 64;     // 32bits
+    get_dlen, set_dlen: 127, 96;    // 32bits
+}
+
+bitfield! {
+    struct MeatReportQueueDescFragImmDT([u8]);
+    u32;
+    get_imm, set_imm: 32, 0;          // 32bits
+}
+
+bitfield! {
+    struct MeatReportQueueDescFragAETH([u8]);
+    u32;
+    get_psn, set_psn: 23, 0;          // 24bits
+    get_msn, set_msn: 47, 24;         // 24bits
+    get_aeth_value, set_aeth_value: 52, 48; // 5bits
+    get_aeth_code, set_aeth_code: 55, 53;   // 3bits
+}
+bitfield! {
+    struct MeatReportQueueDescBth([u8]);
+    u64;
+    get_desc_type, set_desc_type: 0; // 1bit
+    reserved2,_ : 23, 1;              // 23bits
+    get_req_status, set_req_status: 31,24; // 8bit
+    get_bth, set_bth: 95, 32;         // 64bits
+    reserved1,_ : 255, 96;            // 160bits
+}
+
+bitfield! {
+    struct MeatReportQueueDescFragBTH([u8]);
+    u32;
+    get_trans_type,set_trans_type: 2, 0; // 3bits
+    get_opcode,set_opcode: 7, 3;         // 5bits
+    get_qpn,set_qpn: 31, 8;              // 24bits
+    get_psn,set_psn: 55, 32;             // 24bits
+    get_solicited,set_solicited: 56;     // 1bit
+    get_ack_req,set_ack_req: 57;         // 1bit
+    get_pad_cnt,set_pad_cnt: 63, 58;     // 4bits
+}
+
+bitfield! {
+    struct MeatReportQueueDescFragSecondaryRETH([u8]);
+    u64;
+    get_secondary_va,set_secondary_va: 63, 0; // 64bits
+    get_secondary_rkey,set_secondary_rkey: 95, 64; // 32bits
 }
 
 bitflags! {
