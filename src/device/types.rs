@@ -9,6 +9,8 @@ use std::{
     ops::Range,
 };
 
+use crate::{Error, Sge};
+
 pub(crate) enum ToCardCtrlRbDesc {
     UpdateMrTable(ToCardCtrlRbDescUpdateMrTable),
     UpdatePageTable(ToCardCtrlRbDescUpdatePageTable),
@@ -22,10 +24,12 @@ pub(crate) enum ToHostCtrlRbDesc {
 }
 
 #[derive(Clone)]
+#[allow(private_interfaces)]
 pub enum ToCardWorkRbDesc {
     Read(ToCardWorkRbDescRead),
     Write(ToCardWorkRbDescWrite),
     WriteWithImm(ToCardWorkRbDescWriteWithImm),
+    ReadResp(ToCardWorkRbDescWrite)
 }
 
 pub(crate) enum ToHostWorkRbDesc {
@@ -491,6 +495,12 @@ impl ToCardWorkRbDesc {
                 desc.is_first,
                 desc.is_last,
             ),
+            ToCardWorkRbDesc::ReadResp(desc) => (
+                &desc.common,
+                ToCardWorkRbDescOpcode::ReadResp,
+                desc.is_first,
+                desc.is_last,
+            )
         };
 
         // typedef struct {
@@ -572,6 +582,12 @@ impl ToCardWorkRbDesc {
                     + desc.sge2.is_some() as u8
                     + desc.sge3.is_some() as u8,
             ),
+            ToCardWorkRbDesc::ReadResp(desc) => (
+                &desc.common,
+                1 + desc.sge1.is_some() as u8
+                    + desc.sge2.is_some() as u8
+                    + desc.sge3.is_some() as u8,
+            ),
         };
         let mut desc_common = SendQueueReqDescSeg1(dst);
         desc_common.set_pmtu(common.pmtu.clone() as u64);
@@ -614,6 +630,7 @@ impl ToCardWorkRbDesc {
             ToCardWorkRbDesc::Read(desc) => (&desc.sge, None),
             ToCardWorkRbDesc::Write(desc) => (&desc.sge0, desc.sge1.as_ref()),
             ToCardWorkRbDesc::WriteWithImm(desc) => (&desc.sge0, desc.sge1.as_ref()),
+            ToCardWorkRbDesc::ReadResp(desc) => (&desc.sge0, desc.sge1.as_ref()),
         };
 
         let mut frag_sge = SendQueueReqDescFragSGE(&mut dst[16..32]);
@@ -647,6 +664,7 @@ impl ToCardWorkRbDesc {
             ToCardWorkRbDesc::Read(_) => (None, None),
             ToCardWorkRbDesc::Write(desc) => (desc.sge2.as_ref(), desc.sge3.as_ref()),
             ToCardWorkRbDesc::WriteWithImm(desc) => (desc.sge2.as_ref(), desc.sge3.as_ref()),
+            ToCardWorkRbDesc::ReadResp(desc) => (desc.sge2.as_ref(), desc.sge3.as_ref()),
         };
 
         let mut frag_sge = SendQueueReqDescFragSGE(&mut dst[0..16]);
@@ -677,6 +695,7 @@ impl ToCardWorkRbDesc {
             ToCardWorkRbDesc::Read(_) => 1,
             ToCardWorkRbDesc::Write(desc) => 1 + desc.sge2.is_some() as usize,
             ToCardWorkRbDesc::WriteWithImm(desc) => 1 + desc.sge2.is_some() as usize,
+            ToCardWorkRbDesc::ReadResp(desc) => 1 + desc.sge2.is_some() as usize,
         };
 
         2 + sge_desc_cnt
@@ -1120,5 +1139,166 @@ bitflags! {
         const IbvAccessOnDemand = 64;    // (1 << 6)
         const IbvAccessHugetlb = 128;    // (1 << 7)
                                    // IbvAccessRelaxedOrdering   = IBV_ACCESS_OPTIONAL_FIRST,
+    }
+}
+
+pub(crate) struct ToCardWorkRbDescBuilder{
+    type_ : ToCardWorkRbDescOpcode,
+    common : Option<ToCardWorkRbDescCommon>,
+    seg_list : Vec<Sge>,
+    is_first : Option<bool>,
+    is_last : Option<bool>,
+    imm : Option<[u8; 4]>,
+}
+
+impl ToCardWorkRbDescBuilder{
+    pub fn new_write() -> Self{
+        Self{
+            type_ : ToCardWorkRbDescOpcode::Write,
+            common : None,
+            seg_list : Vec::new(),
+            is_first : None,
+            is_last : None,
+            imm : None,
+        }
+    }
+
+    pub fn new_write_imm() -> Self{
+        Self{
+            type_ : ToCardWorkRbDescOpcode::WriteWithImm,
+            common : None,
+            seg_list : Vec::new(),
+            is_first : None,
+            is_last : None,
+            imm : None,
+        }
+    }
+
+    pub fn new_read_resp() -> Self{
+        Self{
+            type_ : ToCardWorkRbDescOpcode::ReadResp,
+            common : None,
+            seg_list : Vec::new(),
+            is_first : None,
+            is_last : None,
+            imm : None,
+        }
+    }
+
+
+    pub fn new_read() -> Self{
+        Self{
+            type_ : ToCardWorkRbDescOpcode::Read,
+            common : None,
+            seg_list : Vec::new(),
+            is_first : None,
+            is_last : None,
+            imm : None,
+        }
+    }
+
+    pub fn with_common(mut self, common : ToCardWorkRbDescCommon) -> Self{
+        self.common = Some(common);
+        self
+    }
+
+    pub fn with_option_sge(mut self, seg : Option<Sge>) -> Self{
+        if let Some(seg) = seg{            
+            self.seg_list.push(seg);
+        }
+        self
+    }
+
+    pub fn with_sge(mut self, seg : Sge) -> Self{
+        self.seg_list.push(seg);
+        self
+    }
+
+    pub fn with_is_first(mut self, is_first : bool) -> Self{
+        self.is_first = Some(is_first);
+        self
+    }
+
+    pub fn with_is_last(mut self, is_last : bool) -> Self{
+        self.is_last = Some(is_last);
+        self
+    }
+
+    pub fn with_imm(mut self, imm : [u8; 4]) -> Self{
+        self.imm = Some(imm);
+        self
+    }
+
+    pub fn build(mut self) -> Result<ToCardWorkRbDesc,Error>{
+        let common = self.common.ok_or_else(||Error::BuildDescFailed("common"))?;
+        match self.type_{
+            ToCardWorkRbDescOpcode::Write =>{
+                let sge0 = self.seg_list.pop().ok_or_else(||Error::BuildDescFailed("sge"))?;
+                let sge1 = self.seg_list.pop();
+                let sge2 = self.seg_list.pop();
+                let sge3 = self.seg_list.pop();
+                let total_len =  sge0.len
+                    + sge1.as_ref().map_or(0, |sge| sge.len)
+                    + sge2.as_ref().map_or(0, |sge| sge.len)
+                    + sge3.as_ref().map_or(0, |sge| sge.len);
+                Ok(ToCardWorkRbDesc::Write(ToCardWorkRbDescWrite {
+                    common,
+                    is_last: true,
+                    is_first: true,
+                    sge0: sge0.into(),
+                    sge1: sge1.map(|sge| sge.into()),
+                    sge2: sge2.map(|sge| sge.into()),
+                    sge3: sge3.map(|sge| sge.into()),
+                }))
+            }
+            ToCardWorkRbDescOpcode::WriteWithImm =>{
+                let sge0 = self.seg_list.pop().ok_or_else(||Error::BuildDescFailed("sge"))?;
+                let sge1 = self.seg_list.pop();
+                let sge2 = self.seg_list.pop();
+                let sge3 = self.seg_list.pop();
+                let total_len =  sge0.len
+                    + sge1.as_ref().map_or(0, |sge| sge.len)
+                    + sge2.as_ref().map_or(0, |sge| sge.len)
+                    + sge3.as_ref().map_or(0, |sge| sge.len);
+                let imm = self.imm.ok_or_else(||Error::BuildDescFailed("imm"))?;
+                Ok(ToCardWorkRbDesc::WriteWithImm(ToCardWorkRbDescWriteWithImm {
+                    common,
+                    is_last: true,
+                    is_first: true,
+                    imm,
+                    sge0: sge0.into(),
+                    sge1: sge1.map(|sge| sge.into()),
+                    sge2: sge2.map(|sge| sge.into()),
+                    sge3: sge3.map(|sge| sge.into()),
+                }))
+            }
+            ToCardWorkRbDescOpcode::Read=>{
+                let sge0 = self.seg_list.pop().ok_or_else(||Error::BuildDescFailed("sge"))?;
+                let total_len =  sge0.len;
+                Ok(ToCardWorkRbDesc::Read(ToCardWorkRbDescRead {
+                    common,
+                    sge: sge0.into(),
+                }))
+            }
+            ToCardWorkRbDescOpcode::ReadResp=>{
+                let sge0 = self.seg_list.pop().ok_or_else(||Error::BuildDescFailed("sge"))?;
+                let sge1 = self.seg_list.pop();
+                let sge2 = self.seg_list.pop();
+                let sge3 = self.seg_list.pop();
+                let total_len =  sge0.len
+                    + sge1.as_ref().map_or(0, |sge| sge.len)
+                    + sge2.as_ref().map_or(0, |sge| sge.len)
+                    + sge3.as_ref().map_or(0, |sge| sge.len);
+                Ok(ToCardWorkRbDesc::ReadResp(ToCardWorkRbDescWrite {
+                    common,
+                    is_last: true,
+                    is_first: true,
+                    sge0: sge0.into(),
+                    sge1: sge1.map(|sge| sge.into()),
+                    sge2: sge2.map(|sge| sge.into()),
+                    sge3: sge3.map(|sge| sge.into()),
+                }))
+            }
+        }
     }
 }

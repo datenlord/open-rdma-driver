@@ -78,6 +78,7 @@ impl PacketProcessor {
         }
     }
 
+    #[allow(unreachable_patterns)]
     pub fn set_from_rdma_message(
         &self,
         buf: &mut [u8],

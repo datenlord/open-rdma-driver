@@ -483,6 +483,14 @@ impl From<ToCardWorkRbDesc> for ToCardDescriptor {
                 imm: Some(desc.imm),
                 sg_list: SGList::new_with_sge_list(desc.sge0, desc.sge1, desc.sge2, desc.sge3),
             },
+            ToCardWorkRbDesc::ReadResp(desc) => ToCardDescriptor {
+                opcode: ToCardWorkRbDescOpcode::ReadResp,
+                common: desc.common,
+                is_first: Some(desc.is_first),
+                is_last: Some(desc.is_last),
+                imm: None,
+                sg_list: SGList::new_with_sge_list(desc.sge0, desc.sge1, desc.sge2, desc.sge3),
+            },
         }
     }
 }

@@ -10,7 +10,7 @@ use std::{
     hash::{Hash, Hasher},
     mem,
     net::Ipv4Addr,
-    sync::atomic::{AtomicBool, Ordering},
+    sync::{atomic::{AtomicBool, Ordering}, Mutex},
 };
 
 // FIXME: don't use static here. It should belong to device
@@ -29,6 +29,19 @@ pub struct Qp {
     pub(crate) dqpn: u32,
     pub(crate) dqp_ip: Ipv4Addr,
     pub(crate) mac_addr: [u8; 6],
+}
+
+#[allow(unused)]
+pub struct QpContext {
+    pub(crate) handle: u32,
+    pub(crate) pd: Pd,
+    pub(crate) qpn: u32,
+    pub(crate) qp_type: DeviceQpType,
+    pub(crate) rq_acc_flags: u8,
+    pub(crate) pmtu: DevicePmtu,
+    pub(crate) dqp_ip: Ipv4Addr,
+    pub(crate) mac_addr: [u8; 6],
+    pub(crate) inner : Mutex<QpCtx>,
 }
 
 impl Qp {

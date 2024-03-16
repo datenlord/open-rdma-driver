@@ -53,8 +53,7 @@ fn create_and_init_card(card_id: usize, mock_server_addr: &str) -> (Device, Pd, 
     let pd = dev.alloc_pd().unwrap();
     eprintln!("[{}] PD allocated", card_id);
 
-    let mut mr_buffer: Vec<u8> = Vec::new();
-    mr_buffer.resize(1024 * 256, 0);
+    let mut mr_buffer: Vec<u8> = Vec::with_capacity(1024 * 256);
 
     unsafe {
         println!(
@@ -96,8 +95,8 @@ fn create_and_init_card(card_id: usize, mock_server_addr: &str) -> (Device, Pd, 
 fn main() {
     const SEND_CNT: usize = 8192 * 4;
 
-    let (dev_a, pd_a, mr_a, qp_a, mut mr_buffer_a) = create_and_init_card(0, "0.0.0.0:9873");
-    let (dev_b, pd_b, mr_b, qp_b, mut mr_buffer_b) = create_and_init_card(1, "0.0.0.0:9875");
+    let (dev_a, _pd_a, mr_a, qp_a, mut mr_buffer_a) = create_and_init_card(0, "0.0.0.0:9873");
+    let (dev_b, _pd_b, mr_b, _qp_b, mut mr_buffer_b) = create_and_init_card(1, "0.0.0.0:9875");
 
     // fill mr_buffer with some data
     let current_time = time::SystemTime::now()
@@ -192,7 +191,7 @@ fn main() {
     eprintln!("Read req sent");
 
     // assert!(mr_buffer[0..0 + 32767] == mr_buffer[128 * 1024..128 * 1024 + 32767]);
-    assert!(mr_buffer_a[0..0 + SEND_CNT] == mr_buffer_a[128 * 1024..128 * 1024 + SEND_CNT]);
+    assert!(mr_buffer_a[0..SEND_CNT] == mr_buffer_a[128 * 1024..128 * 1024 + SEND_CNT]);
 
     dev_a.dereg_mr(mr_a).unwrap();
     dev_b.dereg_mr(mr_b).unwrap();

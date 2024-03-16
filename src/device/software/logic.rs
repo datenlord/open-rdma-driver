@@ -104,6 +104,7 @@ impl BlueRDMALogic {
     }
 
     /// Convert a `ToCardWorkRbDesc` to a `RdmaMessage` and call the `net_send_agent` to send through the network.
+    #[allow(unreachable_patterns)]
     pub fn send(&self, desc: ToCardWorkRbDesc) -> Result<(), BlueRdmaLogicError> {
         let mut req = ToCardDescriptor::from(desc);
         // if it's a raw packet, send it directly

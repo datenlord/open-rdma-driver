@@ -118,6 +118,7 @@ fn get_to_card_desc_common(desc: &ToCardWorkRbDesc) -> &ToCardWorkRbDescCommon {
         ToCardWorkRbDesc::Read(req) => &req.common,
         ToCardWorkRbDesc::Write(req) => &req.common,
         ToCardWorkRbDesc::WriteWithImm(req) => &req.common,
+        ToCardWorkRbDesc::ReadResp(req) => &req.common,
     }
 }
 

@@ -1,16 +1,17 @@
 use crate::{
     device::{
-        DeviceAdaptor, EmulatedDevice, HardwareDevice, QpType, SoftwareDevice, ToCardCtrlRbDesc, ToCardWorkRbDescCommon,
-        ToCardWorkRbDescRead, ToCardWorkRbDescWrite,
+        DeviceAdaptor, EmulatedDevice, HardwareDevice, QpType, SoftwareDevice, ToCardCtrlRbDesc,
+        ToCardWorkRbDescCommon, ToCardWorkRbDescWrite,
     },
     mr::{MrCtx, MrPgt},
     pd::PdCtx,
     qp::QpCtx,
 };
+use device::{ToCardCtrlRbDescSge, ToCardWorkRbDescBuilder};
+use serde::ser::StdError;
 use std::{
-    collections::{hash_map::Entry, HashMap},
-    error::Error as StdError,
-    mem,
+    collections::HashMap,
+    mem::{self},
     net::SocketAddr,
     ops::Range,
     sync::{
@@ -19,9 +20,7 @@ use std::{
     },
     thread::{self, Thread},
     time::Duration,
-    vec,
 };
-use device::ToCardCtrlRbDescSge;
 use thiserror::Error;
 
 mod device;
@@ -152,6 +151,16 @@ impl Device {
         Ok(dev)
     }
 
+    fn send_work_desc(&self, desc_builder: ToCardWorkRbDescBuilder) -> Result<(), Error> {
+        let desc = desc_builder.build()?;
+        self.0
+            .adaptor
+            .to_card_work_rb()
+            .push(desc)
+            .map_err(|_| Error::DeviceBusy)?;
+        Ok(())
+    }
+
     pub fn new_emulated(
         rpc_server_addr: SocketAddr,
         heap_mem_start_addr: usize,
@@ -188,78 +197,71 @@ impl Device {
         let qp_ctx = qp_table.get_mut(&qp).ok_or(Error::InvalidQp)?;
 
         let total_len = sge.len;
-
-        let desc = ToCardWorkRbDesc::Read(ToCardWorkRbDescRead {
-            common: ToCardWorkRbDescCommon {
-                total_len,
-                raddr,
-                rkey,
-                dqp_ip: qp.dqp_ip,
-                dqpn: qp.dqpn,
-                mac_addr: qp.mac_addr,
-                pmtu: qp.pmtu.clone(),
-                flags,
-                qp_type: qp.qp_type.clone(),
-                psn: qp_ctx.send_psn,
-            },
-            sge: sge.into(),
-        });
-
-        // save operation context for unparking
-        {
-            let mut ctx = self.0.read_op_ctx.lock().unwrap();
-
-            match ctx.entry(qp.clone()) {
-                Entry::Occupied(_) => return Err(Error::QpBusy),
-                Entry::Vacant(entry) => {
-                    entry.insert(ReadOpCtx {
-                        thread: thread::current(),
-                        result: None,
-                    });
-                }
-            }
-        }
-
-        // send desc to device
-        self.0
-            .adaptor
-            .to_card_work_rb()
-            .push(desc)
-            .map_err(|_| Error::DeviceBusy)?;
-
-        drop(qp_table);
-
-        // park and wait
-        thread::park();
-
-        // unparked and poll result
-        let ReadOpCtx {
-            thread: _,
-            result: Some(result),
-        } = (loop {
-            let mut ctx = self.0.read_op_ctx.lock().unwrap();
-
-            match ctx.get(&qp) {
-                Some(ReadOpCtx {
-                    thread: _,
-                    result: Some(_),
-                }) => {}
-                Some(ReadOpCtx {
-                    thread: _,
-                    result: None,
-                }) => continue,
-                None => return Err(Error::ReadCtxLost),
-            }
-
-            break ctx.remove(&qp).unwrap();
-        })
-        else {
-            unreachable!()
+        let common = ToCardWorkRbDescCommon {
+            total_len,
+            raddr,
+            rkey,
+            dqp_ip: qp.dqp_ip,
+            dqpn: qp.dqpn,
+            mac_addr: qp.mac_addr,
+            pmtu: qp.pmtu.clone(),
+            flags,
+            qp_type: qp.qp_type.clone(),
+            psn: qp_ctx.send_psn,
         };
+        let builder = ToCardWorkRbDescBuilder::new_read()
+            .with_common(common)
+            .with_sge(sge);
+        self.send_work_desc(builder)?;
 
-        if !result {
-            return Err(Error::DeviceReturnFailed);
-        }
+        // // save operation context for unparking
+        // {
+        //     let mut ctx = self.0.read_op_ctx.lock().unwrap();
+
+        //     match ctx.entry(qp.clone()) {
+        //         Entry::Occupied(_) => return Err(Error::QpBusy),
+        //         Entry::Vacant(entry) => {
+        //             entry.insert(ReadOpCtx {
+        //                 thread: thread::current(),
+        //                 result: None,
+        //             });
+        //         }
+        //     }
+        // }
+
+        // drop(qp_table);
+
+        // // park and wait
+        // thread::park();
+
+        // // unparked and poll result
+        // let ReadOpCtx {
+        //     thread: _,
+        //     result: Some(result),
+        // } = (loop {
+        //     let mut ctx = self.0.read_op_ctx.lock().unwrap();
+
+        //     match ctx.get(&qp) {
+        //         Some(ReadOpCtx {
+        //             thread: _,
+        //             result: Some(_),
+        //         }) => {}
+        //         Some(ReadOpCtx {
+        //             thread: _,
+        //             result: None,
+        //         }) => continue,
+        //         None => return Err(Error::ReadCtxLost),
+        //     }
+
+        //     break ctx.remove(&qp).unwrap();
+        // })
+        // else {
+        //     unreachable!()
+        // };
+
+        // if !result {
+        //     return Err(Error::DeviceReturnFailed);
+        // }
 
         Ok(())
     }
@@ -279,99 +281,97 @@ impl Device {
     ) -> Result<(), Error> {
         let mut qp_table = self.0.qp.lock().unwrap();
         let qp_ctx = qp_table.get_mut(&qp).ok_or(Error::InvalidQp)?;
-
         let total_len = sge0.len
             + sge1.as_ref().map_or(0, |sge| sge.len)
             + sge2.as_ref().map_or(0, |sge| sge.len)
             + sge3.as_ref().map_or(0, |sge| sge.len);
+        let common = ToCardWorkRbDescCommon {
+            total_len,
+            raddr,
+            rkey,
+            dqp_ip: qp.dqp_ip,
+            dqpn: qp.dqpn,
+            mac_addr: qp.mac_addr,
+            pmtu: qp.pmtu.clone(),
+            flags,
+            qp_type: qp.qp_type.clone(),
+            psn: qp_ctx.send_psn,
+        };
+        let builder = ToCardWorkRbDescBuilder::new_write()
+            .with_common(common)
+            .with_sge(sge0)
+            .with_option_sge(sge1)
+            .with_option_sge(sge2)
+            .with_option_sge(sge3);
 
-        let desc = ToCardWorkRbDesc::Write(ToCardWorkRbDescWrite {
-            common: ToCardWorkRbDescCommon {
-                total_len,
-                raddr,
-                rkey,
-                dqp_ip: qp.dqp_ip,
-                dqpn: qp.dqpn,
-                mac_addr: qp.mac_addr,
-                pmtu: qp.pmtu.clone(),
-                flags,
-                qp_type: qp.qp_type.clone(),
-                psn: qp_ctx.send_psn,
-            },
-            is_last: true,
-            is_first: true,
-            sge0: sge0.into(),
-            sge1: sge1.map(|sge| sge.into()),
-            sge2: sge2.map(|sge| sge.into()),
-            sge3: sge3.map(|sge| sge.into()),
-        });
+        self.send_work_desc(builder)?;
 
         // save operation context for unparking
-        {
-            let mut ctx = self.0.write_op_ctx.lock().unwrap();
+        // {
+        //     let mut ctx = self.0.write_op_ctx.lock().unwrap();
 
-            match ctx.entry(qp.clone()) {
-                Entry::Occupied(_) => return Err(Error::QpBusy),
-                Entry::Vacant(entry) => {
-                    entry.insert(WriteOpCtx {
-                        thread: thread::current(),
-                        result: None,
-                    });
-                }
-            }
-        }
+        //     match ctx.entry(qp.clone()) {
+        //         Entry::Occupied(_) => return Err(Error::QpBusy),
+        //         Entry::Vacant(entry) => {
+        //             entry.insert(WriteOpCtx {
+        //                 thread: thread::current(),
+        //                 result: None,
+        //             });
+        //         }
+        //     }
+        // }
 
-        // send desc to device
-        self.0
-            .adaptor
-            .to_card_work_rb()
-            .push(desc)
-            .map_err(|_| Error::DeviceBusy)?;
+        // // send desc to device
+        // self.0
+        //     .adaptor
+        //     .to_card_work_rb()
+        //     .push(desc)
+        //     .map_err(|_| Error::DeviceBusy)?;
 
-        drop(qp_table);
+        // drop(qp_table);
 
-        // park and wait
-        thread::park();
+        // // park and wait
+        // thread::park();
 
-        // unparked and poll result
-        let WriteOpCtx {
-            thread: _,
-            result: Some(result),
-        } = (loop {
-            let mut ctx = self.0.write_op_ctx.lock().unwrap();
+        // // unparked and poll result
+        // let WriteOpCtx {
+        //     thread: _,
+        //     result: Some(result),
+        // } = (loop {
+        //     let mut ctx = self.0.write_op_ctx.lock().unwrap();
 
-            match ctx.get(&qp) {
-                Some(WriteOpCtx {
-                    thread: _,
-                    result: Some(_),
-                }) => {}
-                Some(WriteOpCtx {
-                    thread: _,
-                    result: None,
-                }) => continue,
-                None => return Err(Error::WriteCtxLost),
-            }
+        //     match ctx.get(&qp) {
+        //         Some(WriteOpCtx {
+        //             thread: _,
+        //             result: Some(_),
+        //         }) => {}
+        //         Some(WriteOpCtx {
+        //             thread: _,
+        //             result: None,
+        //         }) => continue,
+        //         None => return Err(Error::WriteCtxLost),
+        //     }
 
-            break ctx.remove(&qp).unwrap();
-        })
-        else {
-            unreachable!()
-        };
+        //     break ctx.remove(&qp).unwrap();
+        // })
+        // else {
+        //     unreachable!()
+        // };
 
-        let first_pkt_max_len = u64::from(&qp.pmtu) - (raddr % (u64::from(&qp.pmtu) - 1));
+        // let first_pkt_max_len = u64::from(&qp.pmtu) - (raddr % (u64::from(&qp.pmtu) - 1));
 
-        let first_pkt_len = total_len.min(first_pkt_max_len as u32);
-        let pkt_cnt = 1 + (total_len - first_pkt_len as u32).div_ceil(u64::from(&qp.pmtu) as u32);
+        // let first_pkt_len = total_len.min(first_pkt_max_len as u32);
+        // let pkt_cnt = 1 + (total_len - first_pkt_len as u32).div_ceil(u64::from(&qp.pmtu) as u32);
 
-        // regain the lock.
-        // TODO: do we need to redesign the lock here?
-        let mut qp_table = self.0.qp.lock().unwrap();
-        let qp_ctx = qp_table.get_mut(&qp).ok_or(Error::InvalidQp)?;
-        qp_ctx.send_psn += pkt_cnt;
+        // // regain the lock.
+        // // TODO: do we need to redesign the lock here?
+        // let mut qp_table = self.0.qp.lock().unwrap();
+        // let qp_ctx = qp_table.get_mut(&qp).ok_or(Error::InvalidQp)?;
+        // qp_ctx.send_psn += pkt_cnt;
 
-        if !result {
-            return Err(Error::DeviceReturnFailed);
-        }
+        // if !result {
+        //     return Err(Error::DeviceReturnFailed);
+        // }
 
         Ok(())
     }
@@ -691,4 +691,6 @@ pub enum Error {
     NoAvailableMr,
     #[error("allocate page table failed")]
     AllocPageTable,
+    #[error("build descriptor failed, lack of `{0}`")]
+    BuildDescFailed(&'static str),
 }
