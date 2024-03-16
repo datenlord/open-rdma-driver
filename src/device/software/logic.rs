@@ -1,17 +1,21 @@
 use thiserror::Error;
 
-use crate::device::{
-    MemAccessTypeFlag, Pmtu, QpType, ToCardCtrlRbDesc, ToCardWorkRbDesc, ToCardWorkRbDescOpcode,
-    ToHostWorkRbDesc, ToHostWorkRbDescAck, ToHostWorkRbDescAethCode, ToHostWorkRbDescCommon, ToHostWorkRbDescOpcode, ToHostWorkRbDescRead, ToHostWorkRbDescStatus,
-    ToHostWorkRbDescTransType, ToHostWorkRbDescWrite, ToHostWorkRbDescWriteType,
-    ToHostWorkRbDescWriteWithImm,
+use crate::{
+    device::{
+        ToCardCtrlRbDesc, ToCardWorkRbDesc, ToCardWorkRbDescOpcode, ToHostWorkRbDesc,
+        ToHostWorkRbDescAck, ToHostWorkRbDescAethCode, ToHostWorkRbDescCommon,
+        ToHostWorkRbDescOpcode, ToHostWorkRbDescRead, ToHostWorkRbDescStatus,
+        ToHostWorkRbDescTransType, ToHostWorkRbDescWrite, ToHostWorkRbDescWriteType,
+        ToHostWorkRbDescWriteWithImm,
+    },
+    types::{MemAccessTypeFlag, Pmtu, QpType},
 };
 
 use super::{
     net_agent::{NetAgentError, NetReceiveLogic, NetSendAgent},
     types::{
         Key, Metadata, PDHandle, PKey, PayloadInfo, Psn, Qpn, RdmaGeneralMeta, RdmaMessage,
-        RdmaMessageMetaCommon, RethHeader, ToCardDescriptor, SGList,
+        RdmaMessageMetaCommon, RethHeader, SGList, ToCardDescriptor,
     },
     utils::{get_first_packet_length, get_pmtu},
 };
@@ -56,8 +60,8 @@ struct MemoryRegion {
 /// # Examples
 /// ```
 /// let send_agent = UDPSendAgent::new().unwrap();
-/// let device = Arc::new(BlueRDMALogic::new(Arc::new(send_agent)));
-/// let mut recv_agent = UDPReceiveAgent::new(device.clone()).unwrap();
+/// let types = Arc::new(BlueRDMALogic::new(Arc::new(send_agent)));
+/// let mut recv_agent = UDPReceiveAgent::new(types.clone()).unwrap();
 /// recv_agent.start().unwrap();
 /// ```
 ///
@@ -104,6 +108,8 @@ impl BlueRDMALogic {
     }
 
     /// Convert a `ToCardWorkRbDesc` to a `RdmaMessage` and call the `net_send_agent` to send through the network.
+    /// TODO: remove the `#[allow(unreachable_patterns)]`
+    /// TODO: the function is too long. Try to split it.
     #[allow(unreachable_patterns)]
     pub fn send(&self, desc: ToCardWorkRbDesc) -> Result<(), BlueRdmaLogicError> {
         let mut req = ToCardDescriptor::from(desc);
@@ -119,7 +125,8 @@ impl BlueRDMALogic {
             }
             let mut payload = PayloadInfo::new();
             cut_from_sgl(total_length, &mut req.sg_list, &mut payload);
-            self.net_send_agent.send_raw(req.common.dqp_ip, 4791, &payload)?;
+            self.net_send_agent
+                .send_raw(req.common.dqp_ip, 4791, &payload)?;
             return Ok(());
         }
 
@@ -128,28 +135,28 @@ impl BlueRDMALogic {
             opcode: ToHostWorkRbDescOpcode::RdmaWriteOnly,
             solicited: false,
             pkey: PKey::new(1),
-            dqpn: Qpn::new(req.common.dqpn),
+            dqpn: Qpn::new(req.common.dqpn.get()),
             ack_req: false,
-            psn: Psn::new(req.common.psn),
+            psn: Psn::new(req.common.psn.get()),
         };
 
         match req.opcode {
             ToCardWorkRbDescOpcode::Write
             | ToCardWorkRbDescOpcode::WriteWithImm
             | ToCardWorkRbDescOpcode::ReadResp => {
-                let is_read_resp =
-                    matches!(req.opcode, ToCardWorkRbDescOpcode::ReadResp);
+                let is_read_resp = matches!(req.opcode, ToCardWorkRbDescOpcode::ReadResp);
                 let total_len = req.common.total_len;
                 let pmtu = get_pmtu(&req.common.pmtu);
                 let first_packet_length = get_first_packet_length(req.common.raddr, pmtu);
-                common_meta.tran_type = ToHostWorkRbDescTransType::try_from(req.common.qp_type as u8).unwrap();
+                common_meta.tran_type =
+                    ToHostWorkRbDescTransType::try_from(req.common.qp_type as u8).unwrap();
 
                 // a default metadata. It will be updated later
                 let mut meta_data = RdmaGeneralMeta {
                     common_meta,
                     reth: RethHeader {
                         va: req.common.raddr,
-                        rkey: Key::new(req.common.rkey.to_be_bytes()),
+                        rkey: Key::new(req.common.rkey.get().to_be_bytes()),
                         len: req.common.total_len,
                     },
                     imm: None,
@@ -191,14 +198,10 @@ impl BlueRDMALogic {
                 // The first va might not align to pmtu
                 let mut cur_va = req.common.raddr;
                 let mut cur_len = total_len;
-                let mut psn: u32 = req.common.psn;
+                let mut psn: u32 = req.common.psn.get();
 
                 let mut payload = PayloadInfo::new();
-                cut_from_sgl(
-                    first_packet_length,
-                    &mut req.sg_list,
-                    &mut payload,
-                );
+                cut_from_sgl(first_packet_length, &mut req.sg_list, &mut payload);
                 meta_data.common_meta.opcode = if is_read_resp {
                     ToHostWorkRbDescOpcode::RdmaReadResponseFirst
                 } else {
@@ -243,9 +246,7 @@ impl BlueRDMALogic {
                         ToHostWorkRbDescOpcode::RdmaWriteLastWithImmediate,
                         Some(req.imm),
                     ),
-                    ToCardWorkRbDescOpcode::Write => {
-                        (ToHostWorkRbDescOpcode::RdmaWriteLast, None)
-                    }
+                    ToCardWorkRbDescOpcode::Write => (ToHostWorkRbDescOpcode::RdmaWriteLast, None),
                     ToCardWorkRbDescOpcode::ReadResp => {
                         (ToHostWorkRbDescOpcode::RdmaReadResponseLast, None)
                     }
@@ -265,14 +266,15 @@ impl BlueRDMALogic {
                 assert!(req.sg_list.len == 1);
                 let local_sa = &req.sg_list.data[0];
                 common_meta.opcode = ToHostWorkRbDescOpcode::RdmaReadRequest;
-                common_meta.tran_type = ToHostWorkRbDescTransType::try_from(req.common.qp_type as u8).unwrap();
+                common_meta.tran_type =
+                    ToHostWorkRbDescTransType::try_from(req.common.qp_type as u8).unwrap();
 
                 let msg = RdmaMessage {
                     meta_data: Metadata::General(RdmaGeneralMeta {
                         common_meta,
                         reth: RethHeader {
                             va: req.common.raddr,
-                            rkey: Key::new(req.common.rkey.to_be_bytes()),
+                            rkey: Key::new(req.common.rkey.get().to_be_bytes()),
                             len: req.common.total_len,
                         },
                         imm: None,
@@ -298,11 +300,11 @@ impl BlueRDMALogic {
         match desc {
             ToCardCtrlRbDesc::QpManagement(desc) => {
                 let mut qp_table = self.qp_table.write()?;
-                let qpn = Qpn::new(desc.qpn);
+                let qpn = Qpn::new(desc.qpn.get());
                 let qp_inner = QueuePairInner {
                     pmtu: desc.pmtu,
                     qp_type: desc.qp_type,
-                    qp_access_flags: MemAccessTypeFlag::from_bits_truncate(desc.rq_acc_flags),
+                    qp_access_flags: desc.rq_acc_flags,
                     pdkey: PDHandle::new(desc.pd_hdl),
                 };
                 if let Some(qp_context) = qp_table.get(&qpn) {
@@ -320,11 +322,11 @@ impl BlueRDMALogic {
             }
             ToCardCtrlRbDesc::UpdateMrTable(desc) => {
                 let mut mr_table = self.mr_rkey_table.write()?;
-                let rkey = Key::new(desc.key.to_be_bytes());
+                let rkey = Key::new(desc.key.get().to_be_bytes());
                 let mr = MemoryRegion {
                     lkey: Key::new([0; 4]),
                     rkey,
-                    acc_flags: MemAccessTypeFlag::from_bits_truncate(desc.acc_flags),
+                    acc_flags: desc.acc_flags,
                     pdkey: PDHandle::new(desc.pd_hdl),
                     addr: desc.addr,
                     len: desc.len as usize,
@@ -339,10 +341,9 @@ impl BlueRDMALogic {
                 }
                 Ok(())
             }
-            // Userspace device use virtual address directly
+            // Userspace types use virtual address directly
             ToCardCtrlRbDesc::UpdatePageTable(_desc) => unimplemented!(),
         }
-        // TODO: the form of returned descriptor is not certain
     }
 
     /// Validate the permission, va and length of corresponding memory region.
@@ -388,7 +389,7 @@ impl NetReceiveLogic<'_> for BlueRDMALogic {
         let mut common = ToHostWorkRbDescCommon {
             status: ToHostWorkRbDescStatus::Unknown,
             trans: message.meta_data.common_meta().tran_type.clone(),
-            dqpn: message.meta_data.common_meta().dqpn.get(),
+            dqpn: crate::types::Qpn::new(message.meta_data.common_meta().dqpn.get()),
             pad_cnt: message.payload.get_pad_cnt() as u8,
         };
         let descriptor = match meta {
@@ -444,10 +445,10 @@ impl NetReceiveLogic<'_> for BlueRDMALogic {
                         ToHostWorkRbDesc::Write(ToHostWorkRbDescWrite {
                             common,
                             write_type: write_type.unwrap(),
-                            psn: header.common_meta.psn.get(),
+                            psn: crate::types::Psn::new(header.common_meta.psn.get()),
                             addr: header.reth.va,
                             len: header.reth.len,
-                            key: u32::from_be_bytes(header.reth.rkey.get()),
+                            key: crate::types::Key::new(u32::from_be_bytes(header.reth.rkey.get())),
                         })
                     }
                     ToHostWorkRbDescOpcode::RdmaWriteLastWithImmediate
@@ -455,11 +456,11 @@ impl NetReceiveLogic<'_> for BlueRDMALogic {
                         ToHostWorkRbDesc::WriteWithImm(ToHostWorkRbDescWriteWithImm {
                             common,
                             write_type: write_type.unwrap(),
-                            psn: header.common_meta.psn.get(),
+                            psn: crate::types::Psn::new(header.common_meta.psn.get()),
                             imm: header.imm.unwrap(),
                             addr: header.reth.va,
                             len: header.reth.len,
-                            key: u32::from_be_bytes(header.reth.rkey.get()),
+                            key: crate::types::Key::new(u32::from_be_bytes(header.reth.rkey.get())),
                         })
                     }
                     ToHostWorkRbDescOpcode::RdmaReadRequest => {
@@ -468,9 +469,11 @@ impl NetReceiveLogic<'_> for BlueRDMALogic {
                             common,
                             len: header.reth.len,
                             laddr: sec_reth.va,
-                            lkey: u32::from_be_bytes(sec_reth.rkey.get()),
+                            lkey: crate::types::Key::new(u32::from_be_bytes(sec_reth.rkey.get())),
                             raddr: header.reth.va,
-                            rkey: u32::from_be_bytes(header.reth.rkey.get()),
+                            rkey: crate::types::Key::new(u32::from_be_bytes(
+                                header.reth.rkey.get(),
+                            )),
                         })
                     }
                     _ => {
@@ -482,9 +485,9 @@ impl NetReceiveLogic<'_> for BlueRDMALogic {
                 match header.aeth_code {
                     ToHostWorkRbDescAethCode::Ack => ToHostWorkRbDesc::Ack(ToHostWorkRbDescAck {
                         common,
-                        msn: header.msn,
+                        msn: crate::types::Msn::new(header.msn),
                         value: header.aeth_value,
-                        psn: header.common_meta.psn.get(),
+                        psn: crate::types::Psn::new(header.common_meta.psn.get()),
                     }),
                     // ToHostWorkRbDescAethCode::Nak => {
                     //     ToHostWorkRbDesc::Nack(ToHostWorkRbDescNack {
@@ -519,11 +522,7 @@ impl NetReceiveLogic<'_> for BlueRDMALogic {
 /// The function iterate from `cur_level` of the scatter-gather list and cut the buffer of `length` from the list.
 /// If current level is not enough, it will move to the next level.
 /// All the slice will be added to the `payload`.
-fn cut_from_sgl(
-    mut length: u32,
-    sgl: &mut SGList,
-    payload: &mut PayloadInfo,
-) {
+fn cut_from_sgl(mut length: u32, sgl: &mut SGList, payload: &mut PayloadInfo) {
     let mut current_level = sgl.cur_level as usize;
     while (current_level as u32) < sgl.len {
         if sgl.data[current_level].len >= length {
@@ -564,14 +563,18 @@ fn cut_sgl_all_levels(sgl: &mut SGList, payload: &mut PayloadInfo) {
 mod tests {
     use std::{net::Ipv4Addr, sync::Arc};
 
-    use crate::device::{
-        software::{
-            logic::cut_sgl_all_levels,
-            net_agent::{NetAgentError, NetSendAgent},
-            types::{Key, PayloadInfo, Qpn, RdmaMessage}, tests::SGListBuilder,
+    use crate::{
+        device::{
+            software::{
+                logic::cut_sgl_all_levels,
+                net_agent::{NetAgentError, NetSendAgent},
+                tests::SGListBuilder,
+                types::{Key, PayloadInfo, Qpn, RdmaMessage},
+            },
+            ToCardCtrlRbDesc, ToCardCtrlRbDescCommon, ToCardCtrlRbDescQpManagement,
+            ToCardCtrlRbDescUpdateMrTable,
         },
-        MemAccessTypeFlag, Pmtu, QpType, ToCardCtrlRbDesc, ToCardCtrlRbDescQpManagement,
-        ToCardCtrlRbDescUpdateMrTable, ToCardCtrlRbDescCommon,
+        types::{MemAccessTypeFlag, Pmtu, QpType},
     };
 
     use super::{cut_from_sgl, BlueRDMALogic};
@@ -581,7 +584,9 @@ mod tests {
         // Here we don't care the va boundary
         // test: has [1000,0,0,0], request 1000
         {
-            let mut sgl = SGListBuilder::new().with_sge(0x1000, 1000, 0_u32.to_be_bytes()).build();
+            let mut sgl = SGListBuilder::new()
+                .with_sge(0x1000, 1000, 0_u32.to_be_bytes())
+                .build();
             let mut payload = PayloadInfo::new();
             cut_from_sgl(1000, &mut sgl, &mut payload);
             assert_eq!(payload.get_length(), 1000);
@@ -591,7 +596,9 @@ mod tests {
 
         // test has [1000,0,0,0], request 1000
         {
-            let mut sgl = SGListBuilder::new().with_sge(0x1000, 1000, 0_u32.to_be_bytes()).build();
+            let mut sgl = SGListBuilder::new()
+                .with_sge(0x1000, 1000, 0_u32.to_be_bytes())
+                .build();
             let mut payload = PayloadInfo::new();
             cut_from_sgl(900, &mut sgl, &mut payload);
             assert_eq!(payload.get_length(), 900);
@@ -601,7 +608,9 @@ mod tests {
 
         // test has [1024,0,0,0], request 512,512
         {
-            let mut sgl = SGListBuilder::new().with_sge(0x1000, 1024, 0_u32.to_be_bytes()).build();
+            let mut sgl = SGListBuilder::new()
+                .with_sge(0x1000, 1024, 0_u32.to_be_bytes())
+                .build();
             let mut payload1 = PayloadInfo::new();
             let mut payload2 = PayloadInfo::new();
             cut_from_sgl(512, &mut sgl, &mut payload1);
@@ -718,14 +727,12 @@ mod tests {
         // test updating qp
         {
             let desc = ToCardCtrlRbDesc::QpManagement(ToCardCtrlRbDescQpManagement {
-                common: ToCardCtrlRbDescCommon {
-                    op_id: [0; 4],
-                },
+                common: ToCardCtrlRbDescCommon { op_id: 0 },
                 is_valid: true,
-                qpn: 1234,
+                qpn: crate::Qpn::new(1234),
                 pd_hdl: 1,
                 qp_type: QpType::Rc,
-                rq_acc_flags: MemAccessTypeFlag::IbvAccessRemoteWrite.bits(),
+                rq_acc_flags: MemAccessTypeFlag::IbvAccessRemoteWrite,
                 pmtu: Pmtu::Mtu1024,
             });
             logic.update(desc).unwrap();
@@ -742,14 +749,12 @@ mod tests {
 
             // write again
             let desc = ToCardCtrlRbDesc::QpManagement(ToCardCtrlRbDescQpManagement {
-                common: ToCardCtrlRbDescCommon {
-                    op_id: [0; 4],
-                },
+                common: ToCardCtrlRbDescCommon { op_id: 0 },
                 is_valid: true,
-                qpn: 1234,
+                qpn: crate::Qpn::new(1234),
                 pd_hdl: 1,
                 qp_type: QpType::Rc,
-                rq_acc_flags: MemAccessTypeFlag::IbvAccessRemoteWrite.bits(),
+                rq_acc_flags: MemAccessTypeFlag::IbvAccessRemoteWrite,
                 pmtu: Pmtu::Mtu2048,
             });
             logic.update(desc).unwrap();
@@ -768,14 +773,12 @@ mod tests {
         // test updating mr
         {
             let desc = ToCardCtrlRbDesc::UpdateMrTable(ToCardCtrlRbDescUpdateMrTable {
-                common: ToCardCtrlRbDescCommon {
-                    op_id: [0; 4],
-                },
+                common: ToCardCtrlRbDescCommon { op_id: 0 },
                 addr: 0x1234567812345678,
                 len: 1024 * 16,
-                key: 1234,
+                key: crate::types::Key::new(1234),
                 pd_hdl: 0,
-                acc_flags: MemAccessTypeFlag::IbvAccessRemoteWrite.bits(),
+                acc_flags: MemAccessTypeFlag::IbvAccessRemoteWrite,
                 pgt_offset: 0,
             });
             logic.update(desc).unwrap();
@@ -794,16 +797,13 @@ mod tests {
 
             // update again
             let desc = ToCardCtrlRbDesc::UpdateMrTable(ToCardCtrlRbDescUpdateMrTable {
-                common: ToCardCtrlRbDescCommon {
-                    op_id: [0; 4],
-                },
-                addr : 0x1234567812345678,
+                common: ToCardCtrlRbDescCommon { op_id: 0 },
+                addr: 0x1234567812345678,
                 len: 1024 * 24,
-                key: 1234,
+                key: crate::types::Key::new(1234),
                 pd_hdl: 0,
                 acc_flags: (MemAccessTypeFlag::IbvAccessRemoteWrite
-                    | MemAccessTypeFlag::IbvAccessRemoteRead)
-                    .bits(),
+                    | MemAccessTypeFlag::IbvAccessRemoteRead),
                 pgt_offset: 0,
             });
             logic.update(desc).unwrap();

@@ -1,13 +1,16 @@
 use std::{cell::RefCell, collections::LinkedList, net::Ipv4Addr, sync::Arc};
 
-use crate::device::{
-    software::{
-        logic::BlueRDMALogic,
-        net_agent::{NetAgentError, NetSendAgent},
-        tests::{SGListBuilder, ToCardWorkRbDescBuilder},
-        types::{Metadata, PayloadInfo, RdmaMessage},
-    }, Pmtu, QpType, ToCardWorkRbDescOpcode,
-    ToHostWorkRbDescOpcode,
+use crate::{
+    device::{
+        software::{
+            logic::BlueRDMALogic,
+            net_agent::{NetAgentError, NetSendAgent},
+            tests::{SGListBuilder, ToCardWorkRbDescBuilder},
+            types::{Metadata, PayloadInfo, RdmaMessage},
+        },
+        ToCardWorkRbDescOpcode, ToHostWorkRbDescOpcode,
+    },
+    types::{Pmtu, QpType},
 };
 
 struct DummpyProxy {
@@ -162,7 +165,6 @@ fn test_logic_send() {
         assert_eq!(message_last.payload.get_length(), 1023);
     }
 
-    // TODO: types miss read resp, so I comment the test
     // read, va=1023,length = 4096, expect write_first + write_middle + write_middle + write_middle + write_last
     // {
     //     let desc = ToCardWorkRbDescBuilder::default()
@@ -259,7 +261,7 @@ fn test_logic_send() {
             .with_rkey(1234)
             .with_pmtu(Pmtu::Mtu1024)
             .with_psn(1234)
-            .with_imm([0, 0, 0x4, 0xd2])
+            .with_imm(u32::from_be_bytes([0, 0, 0x4, 0xd2]))
             .with_dqpn(12)
             .with_sg_list(
                 SGListBuilder::new()
@@ -276,7 +278,7 @@ fn test_logic_send() {
         );
         match message.meta_data {
             Metadata::General(meta) => {
-                assert_eq!(meta.imm.unwrap(), [0, 0, 0x4, 0xd2]);
+                assert_eq!(meta.imm.unwrap(), u32::from_le_bytes([0, 0, 0x4, 0xd2]));
             }
             _ => unreachable!(),
         }

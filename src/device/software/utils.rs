@@ -1,4 +1,5 @@
-use crate::device::Pmtu;
+use crate::types::Pmtu;
+
 
 /// Convert Pmtu enumeration to u32
 #[inline]

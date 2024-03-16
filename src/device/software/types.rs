@@ -1,10 +1,9 @@
 use crate::{
     device::{
-        MemAccessTypeFlag, ToCardCtrlRbDescSge, ToCardWorkRbDescCommon, ToCardWorkRbDescOpcode,
-        ToHostWorkRbDescAethCode,
-        ToHostWorkRbDescOpcode, ToHostWorkRbDescTransType,
+        ToCardCtrlRbDescSge, ToCardWorkRbDesc, ToCardWorkRbDescCommon, ToCardWorkRbDescOpcode,
+        ToHostWorkRbDescAethCode, ToHostWorkRbDescOpcode, ToHostWorkRbDescTransType,
     },
-    ToCardWorkRbDesc,
+    types::MemAccessTypeFlag,
 };
 
 use super::packet::{Immediate, PacketError, AETH, BTH, RDMA_PAYLOAD_ALIGNMENT, RETH};
@@ -237,7 +236,7 @@ impl TryFrom<&BTH> for RdmaMessageMetaCommon {
 pub struct RdmaGeneralMeta {
     pub common_meta: RdmaMessageMetaCommon,
     pub reth: RethHeader,
-    pub imm: Option<[u8; 4]>,
+    pub imm: Option<u32>,
     pub secondary_reth: Option<RethHeader>,
 }
 
@@ -333,7 +332,7 @@ impl From<ToCardCtrlRbDescSge> for SGListElementWithKey {
         SGListElementWithKey {
             addr: sge.addr,
             len: sge.len,
-            key: Key::new(sge.key.to_be_bytes()),
+            key: Key::new(sge.key.get().to_be_bytes()),
         }
     }
 }
@@ -403,11 +402,13 @@ impl SGList {
         Option<ToCardCtrlRbDescSge>,
         Option<ToCardCtrlRbDescSge>,
     ) {
+        use crate::types::Key;
+
         let sge1 = if self.len > 1 {
             Some(ToCardCtrlRbDescSge {
                 addr: self.data[1].addr,
                 len: self.data[1].len,
-                key: u32::from_be_bytes(self.data[1].key.get()),
+                key: Key::new(u32::from_be_bytes(self.data[1].key.get())),
             })
         } else {
             None
@@ -417,7 +418,7 @@ impl SGList {
             Some(ToCardCtrlRbDescSge {
                 addr: self.data[2].addr,
                 len: self.data[2].len,
-                key: u32::from_be_bytes(self.data[2].key.get()),
+                key: Key::new(u32::from_be_bytes(self.data[2].key.get())),
             })
         } else {
             None
@@ -427,7 +428,7 @@ impl SGList {
             Some(ToCardCtrlRbDescSge {
                 addr: self.data[3].addr,
                 len: self.data[3].len,
-                key: u32::from_be_bytes(self.data[3].key.get()),
+                key: Key::new(u32::from_be_bytes(self.data[3].key.get())),
             })
         } else {
             None
@@ -436,7 +437,7 @@ impl SGList {
             ToCardCtrlRbDescSge {
                 addr: self.data[0].addr,
                 len: self.data[0].len,
-                key: u32::from_be_bytes(self.data[0].key.get()),
+                key: Key::new(u32::from_be_bytes(self.data[0].key.get())),
             },
             sge1,
             sge2,
@@ -449,12 +450,11 @@ impl SGList {
 pub(crate) struct ToCardDescriptor {
     pub(crate) opcode: ToCardWorkRbDescOpcode,
     pub(crate) common: ToCardWorkRbDescCommon,
-    pub(crate) imm: Option<[u8; 4]>,
+    pub(crate) imm: Option<u32>,
     pub(crate) is_first: Option<bool>,
     pub(crate) is_last: Option<bool>,
     pub(crate) sg_list: SGList,
 }
-
 
 impl From<ToCardWorkRbDesc> for ToCardDescriptor {
     fn from(desc: ToCardWorkRbDesc) -> Self {

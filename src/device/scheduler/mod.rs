@@ -2,7 +2,9 @@ use std::{collections::LinkedList, sync::Arc, thread::spawn};
 
 use crossbeam_channel::{Receiver, Sender, TryRecvError};
 
-use super::{Pmtu, ToCardCtrlRbDescSge, ToCardWorkRbDesc, ToCardWorkRbDescCommon};
+use super::{ToCardCtrlRbDescSge, ToCardWorkRbDesc, ToCardWorkRbDescCommon};
+
+use crate::types::{Key, Pmtu, Qpn};
 
 const SCHEDULER_SIZE: usize = 1024 * 32; // 32KB
 
@@ -19,7 +21,7 @@ pub(crate) struct DescriptorScheduler {
 }
 
 pub trait SchedulerStrategy: Send + Sync {
-    fn push(&self, qpn: u32, desc: LinkedList<ToCardWorkRbDesc>);
+    fn push(&self, qpn: Qpn, desc: LinkedList<ToCardWorkRbDesc>);
 
     fn pop(&self) -> Option<ToCardWorkRbDesc>;
 
@@ -39,22 +41,22 @@ impl Default for SGList {
                 ToCardCtrlRbDescSge {
                     addr: 0,
                     len: 0,
-                    key: 0,
+                    key: Key::default(),
                 },
                 ToCardCtrlRbDescSge {
                     addr: 0,
                     len: 0,
-                    key: 0,
+                    key: Key::default(),
                 },
                 ToCardCtrlRbDescSge {
                     addr: 0,
                     len: 0,
-                    key: 0,
+                    key: Key::default(),
                 },
                 ToCardCtrlRbDescSge {
                     addr: 0,
                     len: 0,
-                    key: 0,
+                    key: Key::default(),
                 },
             ],
             cur_level: 0,
@@ -261,6 +263,8 @@ mod test {
 
     use crate::device::ToCardCtrlRbDescSge;
 
+    use crate::types::Key;
+
     use super::SGList;
 
     pub struct SGListBuilder {
@@ -274,7 +278,7 @@ mod test {
             }
         }
 
-        pub fn with_sge(&mut self, addr: u64, len: u32, key: u32) -> &mut Self {
+        pub fn with_sge(&mut self, addr: u64, len: u32, key: Key) -> &mut Self {
             self.sg_list.push(ToCardCtrlRbDescSge { addr, len, key });
             self
         }
@@ -289,7 +293,7 @@ mod test {
                 sg_list.data[sg_list.len as usize] = ToCardCtrlRbDescSge {
                     addr: 0,
                     len: 0,
-                    key: 0,
+                    key: Key::default(),
                 };
             }
             sg_list
@@ -308,8 +312,8 @@ mod test {
     #[test]
     fn test_cut_from_sgl() {
         let mut sgl = SGListBuilder::new()
-            .with_sge(0, 1024, 0)
-            .with_sge(2000, 1024, 0)
+            .with_sge(0, 1024, Key::default())
+            .with_sge(2000, 1024, Key::default())
             .build();
         let new_sgl = super::cut_from_sgl(512, &mut sgl);
         assert_eq!(new_sgl.len, 1);

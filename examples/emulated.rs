@@ -1,7 +1,7 @@
 use buddy_system_allocator::LockedHeap;
 
 use open_rdma_driver::{
-    qp::{Pmtu, QpType},
+    types::{QpType,MemAccessTypeFlag,Pmtu},
     Device, Mr, Pd, Qp, Sge,
 };
 use std::{ffi::c_void, net::Ipv4Addr};
@@ -63,7 +63,7 @@ fn create_and_init_card(card_id: usize, mock_server_addr: &str) -> (Device, Pd, 
         );
     }
 
-    let access_flag = 7;
+    let access_flag = MemAccessTypeFlag::IbvAccessRemoteRead | MemAccessTypeFlag::IbvAccessRemoteWrite | MemAccessTypeFlag::IbvAccessLocalWrite;
     let mr = dev
         .reg_mr(
             pd.clone(),
@@ -75,14 +75,12 @@ fn create_and_init_card(card_id: usize, mock_server_addr: &str) -> (Device, Pd, 
         .unwrap();
     eprintln!("[{}] MR registered", card_id);
 
-    let dqpn = if card_id == 0 { 1 } else { 0 };
     let qp = dev
         .create_qp(
             pd.clone(),
             QpType::Rc,
             Pmtu::Mtu4096,
             access_flag,
-            dqpn,
             Ipv4Addr::new(0x44, 0x33, 0x22, 0x11),
             [0xFF, 0xEE, 0xDD, 0xCC, 0xBB, 0xAA],
         )
@@ -137,10 +135,10 @@ fn main() {
     };
     dev_a
         .write(
-            qp_a.clone(),
+            qp_a.get_qpn(),
             &mr_buffer_b[65537] as *const u8 as u64,
             mr_b.get_key(),
-            0,
+            MemAccessTypeFlag::IbvAccessNoFlags,
             sge0,
             Some(sge1),
             Some(sge2),
@@ -180,10 +178,10 @@ fn main() {
 
     dev_a
         .read(
-            qp_a,
+            qp_a.get_qpn(),
             &mr_buffer_b[65537] as *const u8 as u64,
             mr_b.get_key(),
-            0,
+            MemAccessTypeFlag::IbvAccessNoFlags,
             sge_read,
         )
         .unwrap();

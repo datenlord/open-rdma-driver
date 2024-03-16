@@ -2,12 +2,12 @@ use std::net::Ipv4Addr;
 
 use crate::{
     device::{
-        MemAccessTypeFlag, Pmtu, QpType, ToCardCtrlRbDesc, ToCardCtrlRbDescCommon,
-        ToCardCtrlRbDescQpManagement, ToCardCtrlRbDescUpdateMrTable, ToCardWorkRbDescCommon,
+        ToCardCtrlRbDesc, ToCardCtrlRbDescCommon, ToCardCtrlRbDescQpManagement,
+        ToCardCtrlRbDescUpdateMrTable, ToCardWorkRbDesc, ToCardWorkRbDescCommon,
         ToCardWorkRbDescOpcode, ToCardWorkRbDescRead, ToCardWorkRbDescWrite,
         ToCardWorkRbDescWriteWithImm,
     },
-    ToCardWorkRbDesc,
+    types::{MemAccessTypeFlag, Pmtu, QpType},
 };
 
 use super::types::{Key, SGList, SGListElementWithKey};
@@ -61,7 +61,7 @@ pub struct ToCardWorkRbDescBuilder {
     flags: Option<MemAccessTypeFlag>,
     is_first: Option<bool>,
     is_last: Option<bool>,
-    imm: Option<[u8; 4]>,
+    imm: Option<u32>,
     sg_list: Option<SGList>,
 }
 
@@ -139,7 +139,7 @@ impl ToCardWorkRbDescBuilder {
         self
     }
 
-    pub fn with_imm(&mut self, imm: [u8; 4]) -> &mut Self {
+    pub fn with_imm(&mut self, imm: u32) -> &mut Self {
         self.imm = Some(imm);
         self
     }
@@ -153,12 +153,12 @@ impl ToCardWorkRbDescBuilder {
         let common = ToCardWorkRbDescCommon {
             total_len: self.total_len.unwrap(),
             raddr: self.raddr.unwrap(),
-            rkey: self.rkey.unwrap(),
-            dqpn: self.dqpn.unwrap(),
+            rkey: crate::types::Key::new(self.rkey.unwrap()),
+            dqpn: crate::types::Qpn::new(self.dqpn.unwrap()),
             pmtu: self.pmtu.clone().unwrap(),
-            qp_type: self.qp_type.clone().unwrap(),
-            psn: self.psn.unwrap(),
-            flags: self.flags.unwrap().bits(),
+            qp_type: self.qp_type.unwrap(),
+            psn: crate::types::Psn::new(self.psn.unwrap()),
+            flags: self.flags.unwrap(),
             dqp_ip: Ipv4Addr::new(0, 0, 0, 0),
             mac_addr: [0; 6],
         };
@@ -199,7 +199,7 @@ pub enum ToCardCtrlRbDescBuilderType {
 }
 pub struct ToCardCtrlRbDescBuilder {
     type_: ToCardCtrlRbDescBuilderType,
-    op_id: Option<[u8; 4]>,
+    op_id: Option<u32>,
     addr: Option<u64>,
     len: Option<u32>,
     key: Option<[u8; 4]>,
@@ -217,7 +217,7 @@ impl ToCardCtrlRbDescBuilder {
     pub fn new(type_: ToCardCtrlRbDescBuilderType) -> Self {
         Self {
             type_,
-            op_id: Some([0; 4]),
+            op_id: Some(0),
             addr: None,
             len: None,
             key: None,
@@ -233,7 +233,7 @@ impl ToCardCtrlRbDescBuilder {
     }
 
     #[allow(dead_code)]
-    pub fn with_op_id(&mut self, op_id: [u8; 4]) -> &mut Self {
+    pub fn with_op_id(&mut self, op_id: u32) -> &mut Self {
         self.op_id = Some(op_id);
         self
     }
@@ -303,9 +303,9 @@ impl ToCardCtrlRbDescBuilder {
                     common,
                     addr: self.addr.unwrap(),
                     len: self.len.unwrap(),
-                    key: u32::from_be_bytes(self.key.unwrap()),
+                    key: crate::types::Key::new(u32::from_be_bytes(self.key.unwrap())),
                     pd_hdl: self.pd_hdl.unwrap(),
-                    acc_flags: self.acc_flags.unwrap().bits(),
+                    acc_flags: self.acc_flags.unwrap(),
                     pgt_offset: self.pgt_offset.unwrap(),
                 })
             }
@@ -313,10 +313,10 @@ impl ToCardCtrlRbDescBuilder {
                 ToCardCtrlRbDesc::QpManagement(ToCardCtrlRbDescQpManagement {
                     common,
                     is_valid: self.is_valid.unwrap(),
-                    qpn: self.qpn.unwrap(),
+                    qpn: crate::Qpn::new(self.qpn.unwrap()),
                     pd_hdl: self.pd_hdl.unwrap(),
-                    qp_type: self.qp_type.clone().unwrap(),
-                    rq_acc_flags: self.rq_acc_flags.unwrap().bits(),
+                    qp_type: self.qp_type.unwrap(),
+                    rq_acc_flags: self.rq_acc_flags.unwrap(),
                     pmtu: self.pmtu.clone().unwrap(),
                 })
             }

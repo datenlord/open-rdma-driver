@@ -9,7 +9,10 @@ use std::{
     ops::Range,
 };
 
-use crate::{Error, Sge};
+use crate::{
+    types::{Key, MemAccessTypeFlag, Msn, Psn, Qpn, QpType, Pmtu},
+    Error, Sge,
+};
 
 pub(crate) enum ToCardCtrlRbDesc {
     UpdateMrTable(ToCardCtrlRbDescUpdateMrTable),
@@ -29,7 +32,7 @@ pub enum ToCardWorkRbDesc {
     Read(ToCardWorkRbDescRead),
     Write(ToCardWorkRbDescWrite),
     WriteWithImm(ToCardWorkRbDescWriteWithImm),
-    ReadResp(ToCardWorkRbDescWrite)
+    ReadResp(ToCardWorkRbDescWrite),
 }
 
 pub(crate) enum ToHostWorkRbDesc {
@@ -41,16 +44,16 @@ pub(crate) enum ToHostWorkRbDesc {
 }
 
 pub(crate) struct ToCardCtrlRbDescCommon {
-    pub(crate) op_id: [u8; 4], // user_data
+    pub(crate) op_id: u32, // user_data
 }
 
 pub(crate) struct ToCardCtrlRbDescUpdateMrTable {
     pub(crate) common: ToCardCtrlRbDescCommon,
     pub(crate) addr: u64,
     pub(crate) len: u32,
-    pub(crate) key: u32,
+    pub(crate) key: Key,
     pub(crate) pd_hdl: u32,
-    pub(crate) acc_flags: u8,
+    pub(crate) acc_flags: MemAccessTypeFlag,
     pub(crate) pgt_offset: u32,
 }
 
@@ -64,15 +67,15 @@ pub(crate) struct ToCardCtrlRbDescUpdatePageTable {
 pub(crate) struct ToCardCtrlRbDescQpManagement {
     pub(crate) common: ToCardCtrlRbDescCommon,
     pub(crate) is_valid: bool,
-    pub(crate) qpn: u32,
+    pub(crate) qpn: Qpn,
     pub(crate) pd_hdl: u32,
     pub(crate) qp_type: QpType,
-    pub(crate) rq_acc_flags: u8,
+    pub(crate) rq_acc_flags: MemAccessTypeFlag,
     pub(crate) pmtu: Pmtu,
 }
 
 pub(crate) struct ToHostCtrlRbDescCommon {
-    pub(crate) op_id: [u8; 4], // user_data
+    pub(crate) op_id: u32, // user_data
     pub(crate) is_success: bool,
 }
 
@@ -92,14 +95,14 @@ pub(crate) struct ToHostCtrlRbDescQpManagement {
 pub(crate) struct ToCardWorkRbDescCommon {
     pub(crate) total_len: u32,
     pub(crate) raddr: u64,
-    pub(crate) rkey: u32,
+    pub(crate) rkey: Key,
     pub(crate) dqp_ip: Ipv4Addr,
-    pub(crate) dqpn: u32,
+    pub(crate) dqpn: Qpn,
     pub(crate) mac_addr: [u8; 6],
     pub(crate) pmtu: Pmtu,
-    pub(crate) flags: u8,
+    pub(crate) flags: MemAccessTypeFlag,
     pub(crate) qp_type: QpType,
-    pub(crate) psn: u32,
+    pub(crate) psn: Psn,
 }
 
 #[derive(Clone)]
@@ -124,7 +127,7 @@ pub(crate) struct ToCardWorkRbDescWriteWithImm {
     pub(crate) common: ToCardWorkRbDescCommon,
     pub(crate) is_last: bool,
     pub(crate) is_first: bool,
-    pub(crate) imm: [u8; 4],
+    pub(crate) imm: u32,
     pub(crate) sge0: ToCardCtrlRbDescSge,
     pub(crate) sge1: Option<ToCardCtrlRbDescSge>,
     pub(crate) sge2: Option<ToCardCtrlRbDescSge>,
@@ -134,7 +137,7 @@ pub(crate) struct ToCardWorkRbDescWriteWithImm {
 pub(crate) struct ToHostWorkRbDescCommon {
     pub(crate) status: ToHostWorkRbDescStatus,
     pub(crate) trans: ToHostWorkRbDescTransType,
-    pub(crate) dqpn: u32,
+    pub(crate) dqpn: Qpn,
     pub(crate) pad_cnt: u8,
 }
 
@@ -142,69 +145,49 @@ pub(crate) struct ToHostWorkRbDescRead {
     pub(crate) common: ToHostWorkRbDescCommon,
     pub(crate) len: u32,
     pub(crate) laddr: u64,
-    pub(crate) lkey: u32,
+    pub(crate) lkey: Key,
     pub(crate) raddr: u64,
-    pub(crate) rkey: u32,
+    pub(crate) rkey: Key,
 }
 
 pub(crate) struct ToHostWorkRbDescWrite {
     pub(crate) common: ToHostWorkRbDescCommon,
     pub(crate) write_type: ToHostWorkRbDescWriteType,
-    pub(crate) psn: u32,
+    pub(crate) psn: Psn,
     pub(crate) addr: u64,
     pub(crate) len: u32,
-    pub(crate) key: u32,
+    pub(crate) key: Key,
 }
 
 pub(crate) struct ToHostWorkRbDescWriteWithImm {
     pub(crate) common: ToHostWorkRbDescCommon,
     pub(crate) write_type: ToHostWorkRbDescWriteType,
-    pub(crate) psn: u32,
-    pub(crate) imm: [u8; 4],
+    pub(crate) psn: Psn,
+    pub(crate) imm: u32,
     pub(crate) addr: u64,
     pub(crate) len: u32,
-    pub(crate) key: u32,
+    pub(crate) key: Key,
 }
 
 pub(crate) struct ToHostWorkRbDescAck {
     pub(crate) common: ToHostWorkRbDescCommon,
-    pub(crate) msn: u32,
+    pub(crate) msn: Msn,
     pub(crate) value: u8,
-    pub(crate) psn: u32,
+    pub(crate) psn: Psn,
 }
 
 pub(crate) struct ToHostWorkRbDescNack {
     pub(crate) common: ToHostWorkRbDescCommon,
-    pub(crate) msn: u32,
+    pub(crate) msn: Msn,
     pub(crate) value: u8,
-    pub(crate) lost_psn: Range<u32>,
-}
-
-#[derive(Debug, Clone)]
-pub(crate) enum Pmtu {
-    Mtu256 = 1,
-    Mtu512 = 2,
-    Mtu1024 = 3,
-    Mtu2048 = 4,
-    Mtu4096 = 5,
-}
-
-// TODO, there are two QpType definition in the code, remove one?
-#[derive(Debug, Clone)]
-pub(crate) enum QpType {
-    Rc = 2,
-    Uc = 3,
-    Ud = 4,
-    RawPacket = 8,
-    XrcSend = 9,
-    XrcRecv = 10,
+    pub(crate) lost_psn: Range<Psn>,
 }
 
 #[derive(Debug, Clone)]
 pub(crate) struct ToCardCtrlRbDescSge {
     pub(crate) addr: u64,
     pub(crate) len: u32,
-    pub(crate) key: u32,
+    pub(crate) key: Key,
 }
 
 #[derive(TryFromPrimitive)]
@@ -330,7 +313,7 @@ pub(crate) enum ToHostWorkRbDescAethCode {
 
 impl ToCardCtrlRbDesc {
     pub(super) fn write(&self, dst: &mut [u8]) {
-        fn write_common_header(dst: &mut [u8], opcode: CtrlRbDescOpcode, op_id: [u8; 4]) {
+        fn write_common_header(dst: &mut [u8], opcode: CtrlRbDescOpcode, op_id: u32) {
             // typedef struct {
             //     Bit#(32)                userData;
             //     ReservedZero#(20)       reserved1;
@@ -345,7 +328,7 @@ impl ToCardCtrlRbDesc {
             common.set_is_success_or_need_signal_cplt(false);
             common.set_op_code(opcode as u32);
             common.set_extra_segment_cnt(0);
-            common.set_user_data(u32::from_le_bytes(op_id));
+            common.set_user_data(op_id.to_be());
         }
 
         fn write_update_mr_table(dst: &mut [u8], desc: &ToCardCtrlRbDescUpdateMrTable) {
@@ -363,12 +346,12 @@ impl ToCardCtrlRbDesc {
             // bytes 0-7 are header bytes, ignore them
 
             let mut update_mr_table = CmdQueueReqDescUpdateMrTable(&mut dst[8..]);
-            update_mr_table.set_mr_base_va(desc.addr);
-            update_mr_table.set_mr_length(desc.len as u64);
-            update_mr_table.set_mr_key(desc.key as u64);
-            update_mr_table.set_pd_handler(desc.pd_hdl as u64);
-            update_mr_table.set_acc_flags(desc.acc_flags as u64);
-            update_mr_table.set_pgt_offset(desc.pgt_offset as u64);
+            update_mr_table.set_mr_base_va(desc.addr.to_be());
+            update_mr_table.set_mr_length(desc.len.to_be().into());
+            update_mr_table.set_mr_key(desc.key.into_be().into());
+            update_mr_table.set_pd_handler(desc.pd_hdl.to_be().into());
+            update_mr_table.set_acc_flags(desc.acc_flags.bits().into());
+            update_mr_table.set_pgt_offset(desc.pgt_offset.to_be().into());
         }
 
         fn write_update_page_table(dst: &mut [u8], desc: &ToCardCtrlRbDescUpdatePageTable) {
@@ -382,9 +365,9 @@ impl ToCardCtrlRbDesc {
 
             // bits 0-7 are header bits
             let mut update_pgt = CmdQueueReqDescUpdatePGT(dst);
-            update_pgt.set_dma_addr(desc.start_addr);
-            update_pgt.set_start_index(desc.pgt_idx as u64);
-            update_pgt.set_dma_read_length((desc.pgte_cnt * 8) as u64);
+            update_pgt.set_dma_addr(desc.start_addr.to_be());
+            update_pgt.set_start_index(desc.pgt_idx.to_be().into());
+            update_pgt.set_dma_read_length((desc.pgte_cnt * 8).to_be().into());
         }
 
         fn write_qp_management(dst: &mut [u8], desc: &ToCardCtrlRbDescQpManagement) {
@@ -407,10 +390,10 @@ impl ToCardCtrlRbDesc {
             let mut seg0 = CmdQueueReqDescQpManagementSeg0(dst);
             seg0.set_is_valid(desc.is_valid);
             seg0.set_is_error(false);
-            seg0.set_qpn(desc.qpn as u64);
-            seg0.set_pd_handler(desc.pd_hdl as u64);
-            seg0.set_qp_type(desc.qp_type.clone() as u64);
-            seg0.set_rq_access_flags(desc.rq_acc_flags as u64);
+            seg0.set_qpn(desc.qpn.into_be().into());
+            seg0.set_pd_handler(desc.pd_hdl.to_be().into());
+            seg0.set_qp_type(desc.qp_type as u64);
+            seg0.set_rq_access_flags(desc.rq_acc_flags.bits().into());
             seg0.set_pmtu(desc.pmtu.clone() as u64);
         }
 
@@ -455,7 +438,7 @@ impl ToHostCtrlRbDesc {
 
         let is_success = head.get_is_success_or_need_signal_cplt();
         let opcode = CtrlRbDescOpcode::try_from(head.get_op_code() as u8).unwrap();
-        let op_id = head.get_user_data().to_le_bytes();
+        let op_id = head.get_user_data().to_le();
 
         let common = ToHostCtrlRbDescCommon { op_id, is_success };
 
@@ -500,7 +483,7 @@ impl ToCardWorkRbDesc {
                 ToCardWorkRbDescOpcode::ReadResp,
                 desc.is_first,
                 desc.is_last,
-            )
+            ),
         };
 
         // typedef struct {
@@ -522,7 +505,7 @@ impl ToCardWorkRbDesc {
 
         let extra_segment_cnt = self.serialized_desc_cnt() - 1;
         head.set_extra_segment_cnt(extra_segment_cnt as u32);
-        head.set_total_len(common.total_len);
+        head.set_total_len(common.total_len.to_be());
 
         // typedef struct {
         //     ReservedZero#(64)           reserved1;        // 64 bits
@@ -534,10 +517,10 @@ impl ToCardWorkRbDesc {
         // let mut seg0 = SendQueueReqDescSeg0(&mut dst[8..]);
         let dst = &mut head.0[8..32];
         let mut head = SendQueueReqDescSeg0(dst);
-        head.set_raddr(common.raddr);
-        head.set_rkey(common.rkey as u64);
-        // TODO: check if this is correct
-        head.set_dqp_ip(u32::from_le_bytes(common.dqp_ip.octets()) as u64);
+        head.set_raddr(common.raddr.to_be());
+        head.set_rkey(common.rkey.into_be().into());
+        let ip : u32 = common.dqp_ip.into();
+        head.set_dqp_ip(ip.to_be().into());
     }
 
     pub(super) fn write_1(&self, dst: &mut [u8]) {
@@ -591,10 +574,10 @@ impl ToCardWorkRbDesc {
         };
         let mut desc_common = SendQueueReqDescSeg1(dst);
         desc_common.set_pmtu(common.pmtu.clone() as u64);
-        desc_common.set_flags(common.flags as u64);
-        desc_common.set_qp_type(common.qp_type.clone() as u64);
-        desc_common.set_seg_cnt(sge_cnt as u64);
-        desc_common.set_psn(common.psn as u64);
+        desc_common.set_flags(common.flags.bits().into());
+        desc_common.set_qp_type(common.qp_type as u64);
+        desc_common.set_seg_cnt(sge_cnt.into());
+        desc_common.set_psn(common.psn.into_be().into());
         desc_common.set_mac_addr(u64::from_le_bytes([
             common.mac_addr[0],
             common.mac_addr[1],
@@ -605,10 +588,10 @@ impl ToCardWorkRbDesc {
             0,
             0,
         ]));
-        desc_common.set_dqpn(common.dqpn as u64);
+        desc_common.set_dqpn(common.dqpn.into_be().into());
 
         if let ToCardWorkRbDesc::WriteWithImm(desc) = self {
-            desc_common.set_imm(u32::from_le_bytes(desc.imm) as u64);
+            desc_common.set_imm(desc.imm.to_be() as u64);
         } else {
             desc_common.set_imm(0);
         }
@@ -634,15 +617,15 @@ impl ToCardWorkRbDesc {
         };
 
         let mut frag_sge = SendQueueReqDescFragSGE(&mut dst[16..32]);
-        frag_sge.set_laddr(sge0.addr);
-        frag_sge.set_len(sge0.len as u64);
-        frag_sge.set_lkey(sge0.key as u64);
+        frag_sge.set_laddr(sge0.addr.to_be());
+        frag_sge.set_len(sge0.len.to_be().into());
+        frag_sge.set_lkey(sge0.key.into_be().into());
 
         let mut frag_sge = SendQueueReqDescFragSGE(&mut dst[0..16]);
         if let Some(sge1) = sge1 {
-            frag_sge.set_laddr(sge1.addr);
-            frag_sge.set_len(sge1.len as u64);
-            frag_sge.set_lkey(sge1.key as u64);
+            frag_sge.set_laddr(sge1.addr.to_be());
+            frag_sge.set_len(sge1.len.to_be().into());
+            frag_sge.set_lkey(sge1.key.into_be().into());
         } else {
             dst[0..16].copy_from_slice(&[0; 16]);
         }
@@ -669,9 +652,9 @@ impl ToCardWorkRbDesc {
 
         let mut frag_sge = SendQueueReqDescFragSGE(&mut dst[0..16]);
         if let Some(sge3) = sge3 {
-            frag_sge.set_lkey(sge3.key as u64);
-            frag_sge.set_len(sge3.len as u64);
-            frag_sge.set_laddr(sge3.addr);
+            frag_sge.set_lkey(sge3.key.into_be().into());
+            frag_sge.set_len(sge3.len.to_be().into());
+            frag_sge.set_laddr(sge3.addr.to_be());
         } else {
             frag_sge.set_lkey(0);
             frag_sge.set_len(0);
@@ -680,9 +663,9 @@ impl ToCardWorkRbDesc {
 
         let mut frag_sge = SendQueueReqDescFragSGE(&mut dst[16..32]);
         if let Some(sge2) = sge2 {
-            frag_sge.set_lkey(sge2.key as u64);
-            frag_sge.set_len(sge2.len as u64);
-            frag_sge.set_laddr(sge2.addr);
+            frag_sge.set_lkey(sge2.key.into_be().into());
+            frag_sge.set_len(sge2.len.to_be().into());
+            frag_sge.set_laddr(sge2.addr.to_be());
         } else {
             frag_sge.set_lkey(0);
             frag_sge.set_len(0);
@@ -705,7 +688,7 @@ impl ToCardWorkRbDesc {
 impl ToHostWorkRbDesc {
     pub(super) fn read(src: &[u8]) -> Result<ToHostWorkRbDesc, IncompleteToHostWorkRbDesc> {
         /// (addr, key, len)
-        fn read_reth(src: &[u8]) -> (u64, u32, u32) {
+        fn read_reth(src: &[u8]) -> (u64, Key, u32) {
             // typedef struct {
             //     Length                  dlen;         // 32
             //     RKEY                    rkey;         // 32
@@ -714,25 +697,26 @@ impl ToHostWorkRbDesc {
 
             // first 12 bytes are desc type, status and bth
             let mut frag_reth = MeatReportQueueDescFragRETH(&src[12..]);
-            let addr = frag_reth.get_va();
-            let key = frag_reth.get_rkey() as u32;
-            let len = frag_reth.get_dlen() as u32;
+            let addr = u64::from_be(frag_reth.get_va());
+            let key = Key::from_be(frag_reth.get_rkey() as u32);
+            let len = u32::from_be(frag_reth.get_dlen() as u32);
 
             (addr, key, len)
         }
 
-        fn read_imm(src: &[u8]) -> [u8; 4] {
+        fn read_imm(src: &[u8]) -> u32 {
             // typedef struct {
             //     IMM                             data;           // 32
             // } MeatReportQueueDescFragImmDT deriving(Bits, FShow);
 
             // first 28 bytes are desc type, status, bth and reth
             let mut imm = MeatReportQueueDescFragImmDT(&src[28..32]);
-            imm.get_imm().to_le_bytes()
+            // call the `to_be` to convert order
+            imm.get_imm().to_be()
         }
 
         // (last_psn, msn, value, code)
-        fn read_aeth(src: &[u8]) -> (u32, u32, u8, ToHostWorkRbDescAethCode) {
+        fn read_aeth(src: &[u8]) -> (Psn, Msn, u8, ToHostWorkRbDescAethCode) {
             // typedef struct {
             //     AethCode                code;         // 3
             //     AethValue               value;        // 5
@@ -742,8 +726,8 @@ impl ToHostWorkRbDesc {
 
             // first 12 bytes are desc type, status and bth
             let mut frag_aeth = MeatReportQueueDescFragAETH(&src[12..]);
-            let psn = frag_aeth.get_psn();
-            let msn = frag_aeth.get_msn();
+            let psn = Psn::from_be(frag_aeth.get_psn());
+            let msn = Msn::from_be(frag_aeth.get_msn());
             let value = frag_aeth.get_aeth_value() as u8;
             let code = ToHostWorkRbDescAethCode::try_from(frag_aeth.get_aeth_code() as u8).unwrap();
 
@@ -778,8 +762,8 @@ impl ToHostWorkRbDesc {
         let trans =
             ToHostWorkRbDescTransType::try_from(desc_frag_bth.get_trans_type() as u8).unwrap();
         let opcode = ToHostWorkRbDescOpcode::try_from(desc_frag_bth.get_opcode() as u8).unwrap();
-        let dqpn = desc_frag_bth.get_qpn();
-        let psn = desc_frag_bth.get_psn();
+        let dqpn = Qpn::from_be(desc_frag_bth.get_qpn());
+        let psn = Psn::from_be(desc_frag_bth.get_psn());
         let pad_cnt = desc_frag_bth.get_pad_cnt() as u8;
 
         let common = ToHostWorkRbDescCommon {
@@ -880,7 +864,7 @@ impl ToHostWorkRbDesc {
                         laddr: addr,
                         lkey: key,
                         raddr: 0,
-                        rkey: 0,
+                        rkey: Key::default(),
                     }),
                     parsed_cnt: 1,
                 })
@@ -927,14 +911,14 @@ impl ToHostWorkRbDesc {
 impl IncompleteToHostWorkRbDesc {
     #[allow(unreachable_code)]
     pub(super) fn read(self, src: &[u8]) -> Result<ToHostWorkRbDesc, IncompleteToHostWorkRbDesc> {
-        fn read_second_reth(src: &[u8]) -> (u64, u32) {
+        fn read_second_reth(src: &[u8]) -> (u64, Key) {
             // typedef struct {
             //     RKEY                            secondaryRkey;   // 32
             //     ADDR                            secondaryVa;     // 64
             // } MeatReportQueueDescFragSecondaryRETH deriving(Bits, FShow);
             let secondary_reth = MeatReportQueueDescFragSecondaryRETH(&src);
             let addr = secondary_reth.get_secondary_va();
-            let key = secondary_reth.get_secondary_rkey() as u32;
+            let key = Key::from_be(secondary_reth.get_secondary_rkey() as u32);
 
             (addr, key)
         }
@@ -957,18 +941,6 @@ impl IncompleteToHostWorkRbDesc {
 
         self.parsed_cnt += 1;
         Err(self)
-    }
-}
-
-impl From<&Pmtu> for u64 {
-    fn from(pmtu: &Pmtu) -> u64 {
-        match pmtu {
-            Pmtu::Mtu256 => 256,
-            Pmtu::Mtu512 => 512,
-            Pmtu::Mtu1024 => 1024,
-            Pmtu::Mtu2048 => 2048,
-            Pmtu::Mtu4096 => 4096,
-        }
     }
 }
 
@@ -1126,118 +1098,106 @@ bitfield! {
     get_secondary_rkey,set_secondary_rkey: 95, 64; // 32bits
 }
 
-bitflags! {
-    #[derive(Clone,Copy)]
-    pub struct MemAccessTypeFlag: u8 {
-        const IbvAccessNoFlags = 0;      // Not defined in rdma-core
-        const IbvAccessLocalWrite = 1;   // (1 << 0)
-        const IbvAccessRemoteWrite = 2;  // (1 << 1)
-        const IbvAccessRemoteRead = 4;   // (1 << 2)
-        const IbvAccessRemoteAtomic = 8; // (1 << 3)
-        const IbvAccessMwBind = 16;      // (1 << 4)
-        const IbvAccessZeroBased = 32;   // (1 << 5)
-        const IbvAccessOnDemand = 64;    // (1 << 6)
-        const IbvAccessHugetlb = 128;    // (1 << 7)
-                                   // IbvAccessRelaxedOrdering   = IBV_ACCESS_OPTIONAL_FIRST,
-    }
+pub(crate) struct ToCardWorkRbDescBuilder {
+    type_: ToCardWorkRbDescOpcode,
+    common: Option<ToCardWorkRbDescCommon>,
+    seg_list: Vec<Sge>,
+    is_first: Option<bool>,
+    is_last: Option<bool>,
+    imm: Option<u32>,
 }
 
-pub(crate) struct ToCardWorkRbDescBuilder{
-    type_ : ToCardWorkRbDescOpcode,
-    common : Option<ToCardWorkRbDescCommon>,
-    seg_list : Vec<Sge>,
-    is_first : Option<bool>,
-    is_last : Option<bool>,
-    imm : Option<[u8; 4]>,
-}
-
-impl ToCardWorkRbDescBuilder{
-    pub fn new_write() -> Self{
-        Self{
-            type_ : ToCardWorkRbDescOpcode::Write,
-            common : None,
-            seg_list : Vec::new(),
-            is_first : None,
-            is_last : None,
-            imm : None,
+impl ToCardWorkRbDescBuilder {
+    pub fn new_write() -> Self {
+        Self {
+            type_: ToCardWorkRbDescOpcode::Write,
+            common: None,
+            seg_list: Vec::new(),
+            is_first: None,
+            is_last: None,
+            imm: None,
         }
     }
 
-    pub fn new_write_imm() -> Self{
-        Self{
-            type_ : ToCardWorkRbDescOpcode::WriteWithImm,
-            common : None,
-            seg_list : Vec::new(),
-            is_first : None,
-            is_last : None,
-            imm : None,
+    pub fn new_write_imm() -> Self {
+        Self {
+            type_: ToCardWorkRbDescOpcode::WriteWithImm,
+            common: None,
+            seg_list: Vec::new(),
+            is_first: None,
+            is_last: None,
+            imm: None,
         }
     }
 
-    pub fn new_read_resp() -> Self{
-        Self{
-            type_ : ToCardWorkRbDescOpcode::ReadResp,
-            common : None,
-            seg_list : Vec::new(),
-            is_first : None,
-            is_last : None,
-            imm : None,
+    pub fn new_read_resp() -> Self {
+        Self {
+            type_: ToCardWorkRbDescOpcode::ReadResp,
+            common: None,
+            seg_list: Vec::new(),
+            is_first: None,
+            is_last: None,
+            imm: None,
         }
     }
 
-
-    pub fn new_read() -> Self{
-        Self{
-            type_ : ToCardWorkRbDescOpcode::Read,
-            common : None,
-            seg_list : Vec::new(),
-            is_first : None,
-            is_last : None,
-            imm : None,
+    pub fn new_read() -> Self {
+        Self {
+            type_: ToCardWorkRbDescOpcode::Read,
+            common: None,
+            seg_list: Vec::new(),
+            is_first: None,
+            is_last: None,
+            imm: None,
         }
     }
 
-    pub fn with_common(mut self, common : ToCardWorkRbDescCommon) -> Self{
+    pub fn with_common(mut self, common: ToCardWorkRbDescCommon) -> Self {
         self.common = Some(common);
         self
     }
 
-    pub fn with_option_sge(mut self, seg : Option<Sge>) -> Self{
-        if let Some(seg) = seg{            
+    pub fn with_option_sge(mut self, seg: Option<Sge>) -> Self {
+        if let Some(seg) = seg {
             self.seg_list.push(seg);
         }
         self
     }
 
-    pub fn with_sge(mut self, seg : Sge) -> Self{
+    pub fn with_sge(mut self, seg: Sge) -> Self {
         self.seg_list.push(seg);
         self
     }
 
-    pub fn with_is_first(mut self, is_first : bool) -> Self{
+    pub fn with_is_first(mut self, is_first: bool) -> Self {
         self.is_first = Some(is_first);
         self
     }
 
-    pub fn with_is_last(mut self, is_last : bool) -> Self{
+    pub fn with_is_last(mut self, is_last: bool) -> Self {
         self.is_last = Some(is_last);
         self
     }
 
-    pub fn with_imm(mut self, imm : [u8; 4]) -> Self{
+    pub fn with_imm(mut self, imm: u32) -> Self {
         self.imm = Some(imm);
         self
     }
 
-    pub fn build(mut self) -> Result<ToCardWorkRbDesc,Error>{
-        let common = self.common.ok_or_else(||Error::BuildDescFailed("common"))?;
-        match self.type_{
-            ToCardWorkRbDescOpcode::Write =>{
-                let sge0 = self.seg_list.pop().ok_or_else(||Error::BuildDescFailed("sge"))?;
+    pub fn build(mut self) -> Result<ToCardWorkRbDesc, Error> {
+        let common = self
+            .common
+            .ok_or_else(|| Error::BuildDescFailed("common"))?;
+        match self.type_ {
+            ToCardWorkRbDescOpcode::Write => {
+                let sge0 = self
+                    .seg_list
+                    .pop()
+                    .ok_or_else(|| Error::BuildDescFailed("sge"))?;
                 let sge1 = self.seg_list.pop();
                 let sge2 = self.seg_list.pop();
                 let sge3 = self.seg_list.pop();
-                let total_len =  sge0.len
+                let total_len = sge0.len
                     + sge1.as_ref().map_or(0, |sge| sge.len)
                     + sge2.as_ref().map_or(0, |sge| sge.len)
                     + sge3.as_ref().map_or(0, |sge| sge.len);
@@ -1251,41 +1211,52 @@ impl ToCardWorkRbDescBuilder{
                     sge3: sge3.map(|sge| sge.into()),
                 }))
             }
-            ToCardWorkRbDescOpcode::WriteWithImm =>{
-                let sge0 = self.seg_list.pop().ok_or_else(||Error::BuildDescFailed("sge"))?;
+            ToCardWorkRbDescOpcode::WriteWithImm => {
+                let sge0 = self
+                    .seg_list
+                    .pop()
+                    .ok_or_else(|| Error::BuildDescFailed("sge"))?;
                 let sge1 = self.seg_list.pop();
                 let sge2 = self.seg_list.pop();
                 let sge3 = self.seg_list.pop();
-                let total_len =  sge0.len
+                let total_len = sge0.len
                     + sge1.as_ref().map_or(0, |sge| sge.len)
                     + sge2.as_ref().map_or(0, |sge| sge.len)
                     + sge3.as_ref().map_or(0, |sge| sge.len);
-                let imm = self.imm.ok_or_else(||Error::BuildDescFailed("imm"))?;
-                Ok(ToCardWorkRbDesc::WriteWithImm(ToCardWorkRbDescWriteWithImm {
-                    common,
-                    is_last: true,
-                    is_first: true,
-                    imm,
-                    sge0: sge0.into(),
-                    sge1: sge1.map(|sge| sge.into()),
-                    sge2: sge2.map(|sge| sge.into()),
-                    sge3: sge3.map(|sge| sge.into()),
-                }))
+                let imm = self.imm.ok_or_else(|| Error::BuildDescFailed("imm"))?;
+                Ok(ToCardWorkRbDesc::WriteWithImm(
+                    ToCardWorkRbDescWriteWithImm {
+                        common,
+                        is_last: true,
+                        is_first: true,
+                        imm,
+                        sge0: sge0.into(),
+                        sge1: sge1.map(|sge| sge.into()),
+                        sge2: sge2.map(|sge| sge.into()),
+                        sge3: sge3.map(|sge| sge.into()),
+                    },
+                ))
             }
-            ToCardWorkRbDescOpcode::Read=>{
-                let sge0 = self.seg_list.pop().ok_or_else(||Error::BuildDescFailed("sge"))?;
-                let total_len =  sge0.len;
+            ToCardWorkRbDescOpcode::Read => {
+                let sge0 = self
+                    .seg_list
+                    .pop()
+                    .ok_or_else(|| Error::BuildDescFailed("sge"))?;
+                let total_len = sge0.len;
                 Ok(ToCardWorkRbDesc::Read(ToCardWorkRbDescRead {
                     common,
                     sge: sge0.into(),
                 }))
             }
-            ToCardWorkRbDescOpcode::ReadResp=>{
-                let sge0 = self.seg_list.pop().ok_or_else(||Error::BuildDescFailed("sge"))?;
+            ToCardWorkRbDescOpcode::ReadResp => {
+                let sge0 = self
+                    .seg_list
+                    .pop()
+                    .ok_or_else(|| Error::BuildDescFailed("sge"))?;
                 let sge1 = self.seg_list.pop();
                 let sge2 = self.seg_list.pop();
                 let sge3 = self.seg_list.pop();
-                let total_len =  sge0.len
+                let total_len = sge0.len
                     + sge1.as_ref().map_or(0, |sge| sge.len)
                     + sge2.as_ref().map_or(0, |sge| sge.len)
                     + sge3.as_ref().map_or(0, |sge| sge.len);

@@ -101,7 +101,7 @@ fn test_header_bth_reth_imm() {
             assert_eq!(u32::from_be_bytes(header.reth.rkey.get()), 0x12345678);
             assert_eq!(header.reth.len, 0x12345678);
             assert_eq!(message.payload.get_length(), 512);
-            assert_eq!(header.imm.unwrap(), [1u8; IMM_SIZE]);
+            assert_eq!(header.imm.unwrap(), u32::from_le_bytes([1u8; IMM_SIZE]));
         }
         _ => panic!("wrong meta data"),
     }

@@ -243,14 +243,14 @@ impl AETH {
 }
 
 /// The `imm` of RDMA protocol
-pub(crate) struct Immediate([u8; 4]);
+pub(crate) struct Immediate(u32);
 
 impl Immediate {
-    pub fn get_immediate(&self) -> [u8; 4] {
+    pub fn get_immediate(&self) -> u32 {
         self.0
     }
 
-    pub fn set_immediate(&mut self, imm: [u8; 4]) {
+    pub fn set_immediate(&mut self, imm: u32) {
         self.0 = imm;
     }
 }

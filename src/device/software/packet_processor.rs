@@ -78,6 +78,7 @@ impl PacketProcessor {
         }
     }
 
+    /// TODO: remove the `#[allow(unreachable_patterns)]`
     #[allow(unreachable_patterns)]
     pub fn set_from_rdma_message(
         &self,

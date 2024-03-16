@@ -3,7 +3,7 @@ use crate::{
         ToCardCtrlRbDesc, ToCardCtrlRbDescCommon, ToCardCtrlRbDescUpdateMrTable,
         ToCardCtrlRbDescUpdatePageTable,
     },
-    Device, Error, Pd,
+    Device, Error, Pd, types::{Key, MemAccessTypeFlag}, responser::AcknowledgeBuffer,
 };
 use rand::RngCore as _;
 use std::{
@@ -11,24 +11,27 @@ use std::{
     mem, ptr,
 };
 
+const ACKNOWLEDGE_BUFFER_SLOT_CNT : usize = 1024;
+const ACKNOWLEDGE_BUFFER_SIZE : usize = ACKNOWLEDGE_BUFFER_SLOT_CNT * AcknowledgeBuffer::ACKNOWLEDGE_BUFFER_SLOT_SIZE;
+
 #[derive(Debug, Clone)]
 pub struct Mr {
-    pub(crate) key: u32,
+    pub(crate) key: Key,
 }
 
 impl Mr {
-    pub fn get_key(&self) -> u32 {
+    pub fn get_key(&self) -> Key {
         self.key
     }
 }
 
 #[allow(unused)]
 pub(crate) struct MrCtx {
-    pub(crate) key: u32,
+    pub(crate) key: Key,
     pub(crate) pd: Pd,
     pub(crate) va: u64,
     pub(crate) len: u32,
-    pub(crate) acc_flags: u8,
+    pub(crate) acc_flags: MemAccessTypeFlag,
     pub(crate) pgt_offset: usize,
     pub(crate) pg_size: u32,
 }
@@ -52,7 +55,7 @@ impl Device {
         addr: u64,
         len: u32,
         pg_size: u32,
-        acc_flags: u8,
+        acc_flags: MemAccessTypeFlag,
     ) -> Result<Mr, Error> {
         // FIXME: must call mlock to lock the pages, prevent form being swapped out.
         let mut mr_table = self.0.mr_table.lock().unwrap();
@@ -79,7 +82,7 @@ impl Device {
             mr_pgt.table[pgt_offset + pgt_idx] = pa as u64;
         }
 
-        let op_id = super::get_ctrl_op_id();
+        let op_id = self.get_ctrl_op_id();
 
         let desc = ToCardCtrlRbDesc::UpdatePageTable(ToCardCtrlRbDescUpdatePageTable {
             common: ToCardCtrlRbDescCommon { op_id },
@@ -97,7 +100,7 @@ impl Device {
 
         let key_idx = (mr_idx as u32) << (mem::size_of::<u32>() * 8 - crate::MR_KEY_IDX_BIT_CNT);
         let key_secret = rand::thread_rng().next_u32() >> crate::MR_KEY_IDX_BIT_CNT;
-        let key = key_idx | key_secret;
+        let key = Key::new(key_idx | key_secret);
 
         let mr = Mr { key };
         let mr_ctx = MrCtx {
@@ -110,7 +113,7 @@ impl Device {
             pg_size,
         };
 
-        let op_id = super::get_ctrl_op_id();
+        let op_id = self.get_ctrl_op_id();
 
         let desc = ToCardCtrlRbDesc::UpdateMrTable(ToCardCtrlRbDescUpdateMrTable {
             common: ToCardCtrlRbDescCommon { op_id },
@@ -136,13 +139,27 @@ impl Device {
         Ok(mr)
     }
 
+    pub(crate) fn init_ack_buf(&self) -> Result<AcknowledgeBuffer,Error>{
+        let buffer = Box::into_raw(Box::new([0u8; ACKNOWLEDGE_BUFFER_SIZE]));
+        let mr = self
+            .reg_mr(
+                Pd { handle: 0 }, // FIXME: Do we need a special pd for acknowledge buffer?
+                buffer as u64,
+                ACKNOWLEDGE_BUFFER_SIZE as u32,
+                2 * 1024 * 1024, // 2MB
+                MemAccessTypeFlag::IbvAccessLocalWrite,
+            )?;
+        let ack_buf = AcknowledgeBuffer::new(buffer as usize, ACKNOWLEDGE_BUFFER_SIZE, mr.get_key());
+        Ok(ack_buf)
+    }
+
     pub fn dereg_mr(&self, mr: Mr) -> Result<(), Error> {
         let mut mr_table = self.0.mr_table.lock().unwrap();
         let mut pd_pool = self.0.pd.lock().unwrap();
 
         let mut mr_pgt = self.0.mr_pgt.lock().unwrap();
 
-        let mr_idx = mr.key >> (mem::size_of::<u32>() * 8 - crate::MR_KEY_IDX_BIT_CNT);
+        let mr_idx = mr.key.get() >> (mem::size_of::<u32>() * 8 - crate::MR_KEY_IDX_BIT_CNT);
 
         let Some(mr_ctx) = mr_table[mr_idx as usize].as_mut() else {
             return Err(Error::InvalidMr);
@@ -150,25 +167,7 @@ impl Device {
 
         let pd_ctx = pd_pool.get_mut(&mr_ctx.pd).ok_or(Error::InvalidPd)?;
 
-        let op_id = super::get_ctrl_op_id();
-
-        // let desc_header = CtrlRbDescCommonHeader {
-        //     valid: true,
-        //     opcode: CtrlRbDescOpcode::UpdateMrTable,
-        //     extra_segment_cnt: 0,
-        //     is_success_or_need_signal_cplt: false,
-        //     user_data: ctrl_op_id,
-        // };
-
-        // let desc = ToCardCtrlRbDesc::UpdateMrTable(ToCardCtrlRbDescUpdateMrTable {
-        //     common_header: desc_header,
-        //     base_va: 0,
-        //     mr_length: 0,
-        //     mr_key: mr.key,
-        //     pd_handler: 0,
-        //     acc_flags: 0,
-        //     pgt_offset: 0,
-        // });
+        let op_id = self.get_ctrl_op_id();
 
         let desc = ToCardCtrlRbDesc::UpdateMrTable(ToCardCtrlRbDescUpdateMrTable {
             common: ToCardCtrlRbDescCommon { op_id },
@@ -176,7 +175,7 @@ impl Device {
             len: 0,
             key: mr.key,
             pd_hdl: 0,
-            acc_flags: 0,
+            acc_flags: MemAccessTypeFlag::IbvAccessNoFlags,
             pgt_offset: 0,
         });
 

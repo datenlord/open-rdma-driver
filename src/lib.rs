@@ -1,42 +1,45 @@
 use crate::{
     device::{
-        DeviceAdaptor, EmulatedDevice, HardwareDevice, QpType, SoftwareDevice, ToCardCtrlRbDesc,
-        ToCardWorkRbDescCommon, ToCardWorkRbDescWrite,
+        DeviceAdaptor, EmulatedDevice, HardwareDevice, SoftwareDevice, ToCardCtrlRbDesc,
+        ToCardWorkRbDescCommon,
     },
     mr::{MrCtx, MrPgt},
     pd::PdCtx,
-    qp::QpCtx,
 };
 use device::{ToCardCtrlRbDescSge, ToCardWorkRbDescBuilder};
-use serde::ser::StdError;
+use qp::QpContext;
+use recv_pkt_map::RecvPktMap;
+use responser::{DescResponser, RespCommand, WorkDescriptorSender};
 use std::{
     collections::HashMap,
-    mem::{self},
     net::SocketAddr,
-    ops::Range,
     sync::{
-        atomic::{AtomicU32, Ordering},
-        Arc, Mutex, OnceLock,
+        atomic::{AtomicBool, AtomicU32, Ordering},
+        mpsc, Arc, Mutex, OnceLock, RwLock,
     },
     thread::{self, Thread},
-    time::Duration,
 };
-use thiserror::Error;
-
-mod device;
-mod poll;
+use types::{Key, MemAccessTypeFlag, Psn, Qpn};
+use utils::calculate_packet_cnt;
 
 pub mod mr;
 pub mod pd;
 pub mod qp;
+pub mod types;
+
+mod device;
+mod poll;
+mod recv_pkt_map;
+mod responser;
+mod utils;
 
 pub use crate::{mr::Mr, pd::Pd, qp::Qp};
-pub use device::scheduler;
-pub use device::ToCardWorkRbDesc;
+pub use types::Error;
 
 const MR_KEY_IDX_BIT_CNT: usize = 8;
 const MR_TABLE_SIZE: usize = 64;
 const MR_PGT_SIZE: usize = 1024;
+const QP_MAX_CNT: usize = 1024;
 
 #[derive(Clone)]
 pub struct Device(Arc<DeviceInner<dyn DeviceAdaptor>>);
@@ -44,28 +47,28 @@ pub struct Device(Arc<DeviceInner<dyn DeviceAdaptor>>);
 struct DeviceInner<D: ?Sized> {
     pd: Mutex<HashMap<Pd, PdCtx>>,
     mr_table: Mutex<[Option<MrCtx>; MR_TABLE_SIZE]>,
-    qp: Mutex<HashMap<Qp, QpCtx>>,
+    qp_table: Arc<RwLock<HashMap<Qpn, QpContext>>>,
     mr_pgt: Mutex<MrPgt>,
-    ctrl_op_ctx: Mutex<HashMap<[u8; 4], CtrlOpCtx>>,
-    read_op_ctx: Mutex<HashMap<Qp, ReadOpCtx>>,
+    ctrl_op_ctx: Mutex<HashMap<u32, CtrlOpCtx>>,
+    // read_op_ctx: Mutex<HashMap<Qp, ReadOpCtx>>,
     write_op_ctx: Mutex<HashMap<Qp, WriteOpCtx>>,
     revc_pkt_map: RecvPktMap, // TODO: extend to support multiple QPs
     check_recv_pkt_comp_thread: OnceLock<Thread>,
+    next_ctrl_op_id: AtomicU32,
+    qp_availability: Box<[AtomicBool]>,
+    responser: OnceLock<DescResponser>,
+    #[allow(dead_code)]
+    response_command_sender: std::sync::mpsc::Sender<RespCommand>,
     adaptor: D,
 }
 
 pub struct Sge {
     pub addr: u64,
     pub len: u32,
-    pub key: u32,
+    pub key: Key,
 }
 
 struct CtrlOpCtx {
-    thread: Thread,
-    result: Option<bool>,
-}
-
-struct ReadOpCtx {
     thread: Thread,
     result: Option<bool>,
 }
@@ -75,228 +78,186 @@ struct WriteOpCtx {
     result: Option<bool>,
 }
 
-struct RecvPktMap {
-    pkt_cnt: usize,
-    start_psn: u32,
-    stage_0: Box<[u64]>,
-    stage_0_last_chunk: u64,
-    stage_1: Box<[u64]>,
-    stage_1_last_chunk: u64,
-    stage_2: Box<[u64]>,
-    stage_2_last_chunk: u64,
-}
-
-/// Yields PSN ranges of missing packets
-struct MissingPkt<'a> {
-    #[allow(unused)]
-    map: &'a RecvPktMap,
-}
-
-static NEXT_CTRL_OP_ID: AtomicU32 = AtomicU32::new(0);
-
 impl Device {
     const MR_TABLE_EMPTY_ELEM: Option<MrCtx> = None;
 
     pub fn new_hardware() -> Result<Self, Error> {
+        let qp_table = Arc::new(RwLock::new(HashMap::new()));
+        let (response_command_sender, receiver) = std::sync::mpsc::channel();
+        let qp_availability: Vec<AtomicBool> =
+            (0..QP_MAX_CNT).map(|_| AtomicBool::new(true)).collect();
+
+        // by IB spec, QP0 and QP1 are reserved, so qpn should start with 2
+        qp_availability[0].store(false, Ordering::Relaxed);
+        qp_availability[1].store(false, Ordering::Relaxed);
+
         let inner = Arc::new(DeviceInner {
             pd: Mutex::new(HashMap::new()),
             mr_table: Mutex::new([Self::MR_TABLE_EMPTY_ELEM; MR_TABLE_SIZE]),
-            qp: Mutex::new(HashMap::new()),
+            qp_table: qp_table.clone(),
             mr_pgt: Mutex::new(MrPgt::new()),
-            read_op_ctx: Mutex::new(HashMap::new()),
+            // read_op_ctx: Mutex::new(HashMap::new()),
             write_op_ctx: Mutex::new(HashMap::new()),
             ctrl_op_ctx: Mutex::new(HashMap::new()),
             revc_pkt_map: RecvPktMap::new(0, 0),
             check_recv_pkt_comp_thread: OnceLock::new(),
+            next_ctrl_op_id: AtomicU32::new(0),
+            qp_availability: qp_availability.into_boxed_slice(),
             adaptor: HardwareDevice::init().map_err(Error::Device)?,
+            responser: OnceLock::new(),
+            response_command_sender,
         });
 
         let dev = Self(inner);
-
-        let dev_for_poll_ctrl_rb = dev.clone();
-        let dev_for_poll_work_rb = dev.clone();
-        let dev_for_check_recv_pkt_comp = dev.clone();
-
-        thread::spawn(move || dev_for_poll_ctrl_rb.poll_ctrl_rb());
-        thread::spawn(move || dev_for_poll_work_rb.poll_work_rb());
-        thread::spawn(move || dev_for_check_recv_pkt_comp.check_recv_pkt_comp());
+        dev.init(receiver)?;
 
         Ok(dev)
     }
 
     pub fn new_software() -> Result<Self, Error> {
+        let qp_table = Arc::new(RwLock::new(HashMap::new()));
+        let (response_command_sender, receiver) = std::sync::mpsc::channel();
+        let qp_availability: Vec<AtomicBool> =
+            (0..QP_MAX_CNT).map(|_| AtomicBool::new(true)).collect();
         let inner = Arc::new(DeviceInner {
             pd: Mutex::new(HashMap::new()),
             mr_table: Mutex::new([Self::MR_TABLE_EMPTY_ELEM; MR_TABLE_SIZE]),
-            qp: Mutex::new(HashMap::new()),
+            qp_table: qp_table.clone(),
             mr_pgt: Mutex::new(MrPgt::new()),
             ctrl_op_ctx: Mutex::new(HashMap::new()),
-            read_op_ctx: Mutex::new(HashMap::new()),
+            // read_op_ctx: Mutex::new(HashMap::new()),
             write_op_ctx: Mutex::new(HashMap::new()),
             revc_pkt_map: RecvPktMap::new(0, 0),
             check_recv_pkt_comp_thread: OnceLock::new(),
+            next_ctrl_op_id: AtomicU32::new(0),
+            qp_availability: qp_availability.into_boxed_slice(),
+            responser: OnceLock::new(),
+            response_command_sender,
             adaptor: SoftwareDevice::init().map_err(Error::Device)?,
         });
 
         let dev = Self(inner);
-
-        let dev_for_poll_ctrl_rb = dev.clone();
-        let dev_for_poll_work_rb = dev.clone();
-        let dev_for_check_recv_pkt_comp = dev.clone();
-
-        thread::spawn(move || dev_for_poll_ctrl_rb.poll_ctrl_rb());
-        thread::spawn(move || dev_for_poll_work_rb.poll_work_rb());
-        thread::spawn(move || dev_for_check_recv_pkt_comp.check_recv_pkt_comp());
+        dev.init(receiver)?;
 
         Ok(dev)
-    }
-
-    fn send_work_desc(&self, desc_builder: ToCardWorkRbDescBuilder) -> Result<(), Error> {
-        let desc = desc_builder.build()?;
-        self.0
-            .adaptor
-            .to_card_work_rb()
-            .push(desc)
-            .map_err(|_| Error::DeviceBusy)?;
-        Ok(())
     }
 
     pub fn new_emulated(
         rpc_server_addr: SocketAddr,
         heap_mem_start_addr: usize,
     ) -> Result<Self, Error> {
+        let qp_table = Arc::new(RwLock::new(HashMap::new()));
+        let (response_command_sender, receiver) = std::sync::mpsc::channel();
+        let qp_availability: Vec<AtomicBool> =
+            (0..QP_MAX_CNT).map(|_| AtomicBool::new(true)).collect();
+
+        // by IB spec, QP0 and QP1 are reserved, so qpn should start with 2
+        qp_availability[0].store(false, Ordering::Relaxed);
+        qp_availability[1].store(false, Ordering::Relaxed);
         let inner = Arc::new(DeviceInner {
             pd: Mutex::new(HashMap::new()),
             mr_table: Mutex::new([Self::MR_TABLE_EMPTY_ELEM; MR_TABLE_SIZE]),
-            qp: Mutex::new(HashMap::new()),
+            qp_table: qp_table.clone(),
             mr_pgt: Mutex::new(MrPgt::new()),
             ctrl_op_ctx: Mutex::new(HashMap::new()),
-            read_op_ctx: Mutex::new(HashMap::new()),
+            // read_op_ctx: Mutex::new(HashMap::new()),
             write_op_ctx: Mutex::new(HashMap::new()),
             revc_pkt_map: RecvPktMap::new(0, 0),
             check_recv_pkt_comp_thread: OnceLock::new(),
+            next_ctrl_op_id: AtomicU32::new(0),
+            qp_availability: qp_availability.into_boxed_slice(),
+            responser: OnceLock::new(),
+            response_command_sender,
             adaptor: EmulatedDevice::init(rpc_server_addr, heap_mem_start_addr)
                 .map_err(Error::Device)?,
         });
 
         let dev = Self(inner);
 
-        let dev_for_poll_ctrl_rb = dev.clone();
-        let dev_for_poll_work_rb = dev.clone();
-        let dev_for_check_recv_pkt_comp = dev.clone();
-
-        thread::spawn(move || dev_for_poll_ctrl_rb.poll_ctrl_rb());
-        thread::spawn(move || dev_for_poll_work_rb.poll_work_rb());
-        thread::spawn(move || dev_for_check_recv_pkt_comp.check_recv_pkt_comp());
+        dev.init(receiver)?;
 
         Ok(dev)
     }
 
-    pub fn read(&self, qp: Qp, raddr: u64, rkey: u32, flags: u8, sge: Sge) -> Result<(), Error> {
-        let mut qp_table = self.0.qp.lock().unwrap();
-        let qp_ctx = qp_table.get_mut(&qp).ok_or(Error::InvalidQp)?;
+    pub fn read(
+        &self,
+        qpn: Qpn,
+        raddr: u64,
+        rkey: Key,
+        flags: MemAccessTypeFlag,
+        sge: Sge,
+    ) -> Result<(), Error> {
+        let common = {
+            let qp_table = self.0.qp_table.read().unwrap();
+            let qp = qp_table.get(&qpn).ok_or(Error::InvalidQp)?;
 
-        let total_len = sge.len;
-        let common = ToCardWorkRbDescCommon {
-            total_len,
-            raddr,
-            rkey,
-            dqp_ip: qp.dqp_ip,
-            dqpn: qp.dqpn,
-            mac_addr: qp.mac_addr,
-            pmtu: qp.pmtu.clone(),
-            flags,
-            qp_type: qp.qp_type.clone(),
-            psn: qp_ctx.send_psn,
+            let total_len = sge.len;
+            let mut common = ToCardWorkRbDescCommon {
+                total_len,
+                raddr,
+                rkey,
+                dqp_ip: qp.dqp_ip,
+                dqpn: qpn,
+                mac_addr: qp.mac_addr,
+                pmtu: qp.pmtu.clone(),
+                flags,
+                qp_type: qp.qp_type,
+                psn: Psn::default(),
+            };
+            let send_psn = &mut qp.inner.lock().unwrap().send_psn;
+            common.psn = *send_psn;
+            let packet_cnt = calculate_packet_cnt(qp.pmtu.clone(), raddr, total_len);
+            send_psn.wrapping_add(packet_cnt);
+            common
         };
+
         let builder = ToCardWorkRbDescBuilder::new_read()
             .with_common(common)
             .with_sge(sge);
         self.send_work_desc(builder)?;
 
-        // // save operation context for unparking
-        // {
-        //     let mut ctx = self.0.read_op_ctx.lock().unwrap();
-
-        //     match ctx.entry(qp.clone()) {
-        //         Entry::Occupied(_) => return Err(Error::QpBusy),
-        //         Entry::Vacant(entry) => {
-        //             entry.insert(ReadOpCtx {
-        //                 thread: thread::current(),
-        //                 result: None,
-        //             });
-        //         }
-        //     }
-        // }
-
-        // drop(qp_table);
-
-        // // park and wait
-        // thread::park();
-
-        // // unparked and poll result
-        // let ReadOpCtx {
-        //     thread: _,
-        //     result: Some(result),
-        // } = (loop {
-        //     let mut ctx = self.0.read_op_ctx.lock().unwrap();
-
-        //     match ctx.get(&qp) {
-        //         Some(ReadOpCtx {
-        //             thread: _,
-        //             result: Some(_),
-        //         }) => {}
-        //         Some(ReadOpCtx {
-        //             thread: _,
-        //             result: None,
-        //         }) => continue,
-        //         None => return Err(Error::ReadCtxLost),
-        //     }
-
-        //     break ctx.remove(&qp).unwrap();
-        // })
-        // else {
-        //     unreachable!()
-        // };
-
-        // if !result {
-        //     return Err(Error::DeviceReturnFailed);
-        // }
-
         Ok(())
     }
 
     #[allow(clippy::too_many_arguments)]
-    // TODO: discuess whether this function should be blocking?
     pub fn write(
         &self,
-        qp: Qp,
+        qpn: Qpn,
         raddr: u64,
-        rkey: u32,
-        flags: u8,
+        rkey: Key,
+        flags: MemAccessTypeFlag,
         sge0: Sge,
         sge1: Option<Sge>,
         sge2: Option<Sge>,
         sge3: Option<Sge>,
     ) -> Result<(), Error> {
-        let mut qp_table = self.0.qp.lock().unwrap();
-        let qp_ctx = qp_table.get_mut(&qp).ok_or(Error::InvalidQp)?;
-        let total_len = sge0.len
-            + sge1.as_ref().map_or(0, |sge| sge.len)
-            + sge2.as_ref().map_or(0, |sge| sge.len)
-            + sge3.as_ref().map_or(0, |sge| sge.len);
-        let common = ToCardWorkRbDescCommon {
-            total_len,
-            raddr,
-            rkey,
-            dqp_ip: qp.dqp_ip,
-            dqpn: qp.dqpn,
-            mac_addr: qp.mac_addr,
-            pmtu: qp.pmtu.clone(),
-            flags,
-            qp_type: qp.qp_type.clone(),
-            psn: qp_ctx.send_psn,
+        let common = {
+            let qp_table = self.0.qp_table.read().unwrap();
+            let qp = qp_table.get(&qpn).ok_or(Error::InvalidQp)?;
+            let total_len = sge0.len
+                + sge1.as_ref().map_or(0, |sge| sge.len)
+                + sge2.as_ref().map_or(0, |sge| sge.len)
+                + sge3.as_ref().map_or(0, |sge| sge.len);
+            let mut common = ToCardWorkRbDescCommon {
+                total_len,
+                raddr,
+                rkey,
+                dqp_ip: qp.dqp_ip,
+                dqpn: qpn,
+                mac_addr: qp.mac_addr,
+                pmtu: qp.pmtu.clone(),
+                flags,
+                qp_type: qp.qp_type,
+                psn: Psn::default(),
+            };
+
+            let send_psn = &mut qp.inner.lock().unwrap().send_psn;
+            common.psn = *send_psn;
+            let packet_cnt = calculate_packet_cnt(qp.pmtu.clone(), raddr, total_len);
+            send_psn.wrapping_add(packet_cnt);
+            common
         };
+
         let builder = ToCardWorkRbDescBuilder::new_write()
             .with_common(common)
             .with_sge(sge0)
@@ -306,77 +267,10 @@ impl Device {
 
         self.send_work_desc(builder)?;
 
-        // save operation context for unparking
-        // {
-        //     let mut ctx = self.0.write_op_ctx.lock().unwrap();
-
-        //     match ctx.entry(qp.clone()) {
-        //         Entry::Occupied(_) => return Err(Error::QpBusy),
-        //         Entry::Vacant(entry) => {
-        //             entry.insert(WriteOpCtx {
-        //                 thread: thread::current(),
-        //                 result: None,
-        //             });
-        //         }
-        //     }
-        // }
-
-        // // send desc to device
-        // self.0
-        //     .adaptor
-        //     .to_card_work_rb()
-        //     .push(desc)
-        //     .map_err(|_| Error::DeviceBusy)?;
-
-        // drop(qp_table);
-
-        // // park and wait
-        // thread::park();
-
-        // // unparked and poll result
-        // let WriteOpCtx {
-        //     thread: _,
-        //     result: Some(result),
-        // } = (loop {
-        //     let mut ctx = self.0.write_op_ctx.lock().unwrap();
-
-        //     match ctx.get(&qp) {
-        //         Some(WriteOpCtx {
-        //             thread: _,
-        //             result: Some(_),
-        //         }) => {}
-        //         Some(WriteOpCtx {
-        //             thread: _,
-        //             result: None,
-        //         }) => continue,
-        //         None => return Err(Error::WriteCtxLost),
-        //     }
-
-        //     break ctx.remove(&qp).unwrap();
-        // })
-        // else {
-        //     unreachable!()
-        // };
-
-        // let first_pkt_max_len = u64::from(&qp.pmtu) - (raddr % (u64::from(&qp.pmtu) - 1));
-
-        // let first_pkt_len = total_len.min(first_pkt_max_len as u32);
-        // let pkt_cnt = 1 + (total_len - first_pkt_len as u32).div_ceil(u64::from(&qp.pmtu) as u32);
-
-        // // regain the lock.
-        // // TODO: do we need to redesign the lock here?
-        // let mut qp_table = self.0.qp.lock().unwrap();
-        // let qp_ctx = qp_table.get_mut(&qp).ok_or(Error::InvalidQp)?;
-        // qp_ctx.send_psn += pkt_cnt;
-
-        // if !result {
-        //     return Err(Error::DeviceReturnFailed);
-        // }
-
         Ok(())
     }
 
-    fn do_ctrl_op(&self, id: [u8; 4], desc: ToCardCtrlRbDesc) -> Result<bool, Error> {
+    fn do_ctrl_op(&self, id: u32, desc: ToCardCtrlRbDesc) -> Result<bool, Error> {
         // save operation context for unparking
         {
             let mut ctx = self.0.ctrl_op_ctx.lock().unwrap();
@@ -430,222 +324,28 @@ impl Device {
         Ok(result)
     }
 
-    fn check_recv_pkt_comp(self) {
-        self.0
-            .check_recv_pkt_comp_thread
-            .set(thread::current())
-            .unwrap();
+    fn get_ctrl_op_id(&self) -> u32 {
+        self.0.next_ctrl_op_id.fetch_add(1, Ordering::AcqRel)
+    }
 
-        loop {
-            thread::park(); //park and wait for new recv op
-
-            loop {
-                if self.0.revc_pkt_map.is_complete() {
-                    break;
-                }
-
-                thread::sleep(Duration::from_micros(100));
-            }
-
-            // packet complete
-
-            let mut qp_table = self.0.qp.lock().unwrap();
-            let qp = qp_table.keys().next().unwrap(); // FIXME: Why call next to get a QP? too tricky?
-
-            // if the operation is read, returns result and unpark the thread
-            {
-                let mut ctx = self.0.read_op_ctx.lock().unwrap();
-                if let Some(op_ctx) = ctx.get_mut(qp) {
-                    op_ctx.result = Some(true);
-                    op_ctx.thread.unpark();
-                }
-            }
-
-            // send ack
-
-            let bth_pkey = [0; 2]; // TODO: get pkey
-            let bth_tver_pad_m_se = 0b00000000;
-            let bth_opcode = 0b00010001; // ACK
-            let bth_dqp = qp.dqpn.to_le_bytes();
-            let bth_resv8 = 0;
-            let bth_psn = [0; 3];
-            let bth_resv7_a = 0;
-            let aeth_msn = [0; 3];
-            let aeth_syn = 0;
-            let nreth = [0; 4];
-
-            let ack_pkt = Box::new([
-                // BTH bytes 0-3
-                bth_opcode,
-                bth_tver_pad_m_se,
-                bth_pkey[1],
-                bth_pkey[0],
-                // BTH bytes 4-7
-                bth_resv8,
-                bth_dqp[2],
-                bth_dqp[1],
-                bth_dqp[0],
-                // BTH bytes 8-11
-                bth_resv7_a,
-                bth_psn[2],
-                bth_psn[1],
-                bth_psn[0],
-                // AETH bytes 0-3
-                aeth_syn,
-                aeth_msn[2],
-                aeth_msn[1],
-                aeth_msn[0],
-                // NRETH bytes 0-3
-                nreth[3],
-                nreth[2],
-                nreth[1],
-                nreth[0],
-            ]);
-
-            // FIXME: Will this mr leak ?
-            // FIXME: MR on stack? we don't know when hardware will consume this send request. allocate it on heap!
-            // FIXME: use a pre-allocated MR as ack message pool.
-            let ack_packet_len = ack_pkt.len();
-            let ack_pkt_ptr = Box::into_raw(ack_pkt) as u64;
-            let mr = self
-                .reg_mr(
-                    qp.pd.clone(),
-                    ack_pkt_ptr,
-                    ack_packet_len as u32,
-                    2 * 1024 * 1024,
-                    0,
-                )
-                .unwrap();
-
-            let sge = Sge {
-                addr: ack_pkt_ptr,
-                len: ack_packet_len as u32,
-                key: mr.key,
-            };
-
-            let desc = ToCardWorkRbDesc::Write(ToCardWorkRbDescWrite {
-                common: ToCardWorkRbDescCommon {
-                    total_len: sge.len,
-                    raddr: 0,
-                    rkey: 0,
-                    dqp_ip: qp.dqp_ip,
-                    dqpn: qp.dqpn,
-                    mac_addr: qp.mac_addr,
-                    pmtu: qp.pmtu.clone(),
-                    flags: 0,
-                    qp_type: QpType::RawPacket,
-                    psn: 0,
-                },
-                is_last: true,
-                is_first: true,
-                sge0: sge.into(),
-                sge1: None,
-                sge2: None,
-                sge3: None,
-            });
-
-            self.0
-                .adaptor
-                .to_card_work_rb()
-                .push(desc)
-                .map_err(|_| Error::DeviceBusy)
-                .unwrap();
-
-            let qp_ctx = qp_table.values_mut().next().unwrap();
-            qp_ctx.recv_psn += self.0.revc_pkt_map.pkt_cnt as u32;
+    fn init(&self, receiver: mpsc::Receiver<RespCommand>) -> Result<(), Error> {
+        let ack_buf = self.init_ack_buf()?;
+        let responser = DescResponser::new(
+            Arc::new(self.clone()),
+            receiver,
+            ack_buf,
+            self.0.qp_table.clone(),
+        );
+        if self.0.responser.set(responser).is_err() {
+            panic!("responser has been set");
         }
-    }
-}
 
-impl RecvPktMap {
-    const FULL_CHUNK_DIV_BIT_SHIFT_CNT: u32 = 64usize.ilog2();
-    const LAST_CHUNK_MOD_MASK: usize = mem::size_of::<u64>() * 8 - 1;
+        let dev_for_poll_ctrl_rb = self.clone();
+        let dev_for_poll_work_rb = self.clone();
 
-    fn new(pkt_cnt: usize, start_psn: u32) -> Self {
-        let create_stage = |len| {
-            // used-bit count in the last u64, len % 64
-            let rem = len & Self::LAST_CHUNK_MOD_MASK;
-            // number of u64, ceil(len / 64)
-            let len = (len >> Self::FULL_CHUNK_DIV_BIT_SHIFT_CNT) + (rem != 0) as usize;
-            // last u64, lower `rem` bits are 1, higher bits are 0. if `rem == 0``, all bits are 1
-            let last_chunk = ((1u64 << rem) - 1) | ((rem != 0) as u64).wrapping_sub(1);
-
-            (vec![0; len].into_boxed_slice(), last_chunk)
-        };
-
-        let (stage_0, stage_0_last_chunk) = create_stage(pkt_cnt);
-        let (stage_1, stage_1_last_chunk) = create_stage(stage_0.len());
-        let (stage_2, stage_2_last_chunk) = create_stage(stage_1.len());
-
-        Self {
-            pkt_cnt,
-            start_psn,
-            stage_0,
-            stage_0_last_chunk,
-            stage_1,
-            stage_1_last_chunk,
-            stage_2,
-            stage_2_last_chunk,
-        }
-    }
-
-    fn insert(&mut self, psn: u32) {
-        let psn = (psn - self.start_psn) as usize;
-
-        let stage_0_idx = psn >> Self::FULL_CHUNK_DIV_BIT_SHIFT_CNT; // which u64 in stage 0
-        let stage_0_rem = psn & Self::LAST_CHUNK_MOD_MASK; // bit position in u64
-        let stage_0_bit = 1 << stage_0_rem; // bit mask
-        self.stage_0[stage_0_idx] |= stage_0_bit; // set bit in stage 0
-
-        let is_stage_0_last_chunk = stage_0_idx == self.stage_0.len() - 1; // is the bit in the last u64 in stage 0
-        let stage_0_chunk_expected =
-            (is_stage_0_last_chunk as u64).wrapping_sub(1) | self.stage_0_last_chunk; // expected bit mask of the target u64 in stage 0
-        let is_stage_0_chunk_complete = self.stage_0[stage_0_idx] == stage_0_chunk_expected; // is the target u64 in stage 0 full
-
-        let stage_1_idx = stage_0_idx >> Self::FULL_CHUNK_DIV_BIT_SHIFT_CNT; // which u64 in stage 1
-        let stage_1_rem = stage_0_idx & Self::LAST_CHUNK_MOD_MASK; // bit position in u64
-        let stage_1_bit = (is_stage_0_chunk_complete as u64) << stage_1_rem; // bit mask
-        self.stage_1[stage_1_idx] |= stage_1_bit; // set bit in stage 1
-
-        let is_stage_1_last_chunk = stage_1_idx == self.stage_1.len() - 1; // is the bit in the last u64 in stage 1
-        let stage_1_chunk_expected =
-            (is_stage_1_last_chunk as u64).wrapping_sub(1) | self.stage_1_last_chunk; // expected bit mask of the target u64 in stage 1
-        let is_stage_1_chunk_complete = self.stage_1[stage_1_idx] == stage_1_chunk_expected; // is the target u64 in stage 1 full
-
-        let stage_2_idx = stage_1_idx >> Self::FULL_CHUNK_DIV_BIT_SHIFT_CNT; // which u64 in stage 2
-        let stage_2_rem = stage_1_idx & Self::LAST_CHUNK_MOD_MASK; // bit position in u64
-        let stage_2_bit = (is_stage_1_chunk_complete as u64) << stage_2_rem; // bit mask
-        self.stage_2[stage_2_idx] |= stage_2_bit; // set bit in stage 2
-    }
-
-    fn is_complete(&self) -> bool {
-        self.stage_2
-            .iter()
-            .enumerate()
-            .fold(true, |acc, (idx, &bits)| {
-                let is_last_chunk = idx == self.stage_2.len() - 1;
-                let chunk_expected =
-                    (is_last_chunk as u64).wrapping_sub(1) | self.stage_2_last_chunk;
-                let is_chunk_complete = bits == chunk_expected;
-                acc && is_chunk_complete
-            })
-    }
-
-    fn _check_missing(&self) -> MissingPkt {
-        MissingPkt { map: self }
-    }
-}
-
-fn get_ctrl_op_id() -> [u8; 4] {
-    // TODO: make id unique between different processes
-    NEXT_CTRL_OP_ID.fetch_add(1, Ordering::AcqRel).to_le_bytes()
-}
-
-impl Iterator for MissingPkt<'_> {
-    type Item = Range<u32>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        todo!()
+        thread::spawn(move || dev_for_poll_ctrl_rb.poll_ctrl_rb());
+        thread::spawn(move || dev_for_poll_work_rb.poll_work_rb());
+        Ok(())
     }
 }
 
@@ -659,38 +359,14 @@ impl From<Sge> for ToCardCtrlRbDescSge {
     }
 }
 
-#[derive(Debug, Error)]
-pub enum Error {
-    #[error(transparent)]
-    Device(Box<dyn StdError>),
-    #[error("device busy")]
-    DeviceBusy,
-    #[error("device return failed")]
-    DeviceReturnFailed,
-    #[error("ongoing ctrl cmd ctx lost")]
-    CtrlCtxLost,
-    #[error("ongoing read ctx lost")]
-    ReadCtxLost,
-    #[error("ongoing write ctx lost")]
-    WriteCtxLost,
-    #[error("QP busy")]
-    QpBusy,
-    #[error("invalid PD handle")]
-    InvalidPd,
-    #[error("invalid MR handle")]
-    InvalidMr,
-    #[error("invalid QP handle")]
-    InvalidQp,
-    #[error("PD in use")]
-    PdInUse,
-    #[error("QP in use")]
-    QpInUse,
-    #[error("no available QP")]
-    NoAvailableQp,
-    #[error("no available MR")]
-    NoAvailableMr,
-    #[error("allocate page table failed")]
-    AllocPageTable,
-    #[error("build descriptor failed, lack of `{0}`")]
-    BuildDescFailed(&'static str),
+impl WorkDescriptorSender for Device {
+    fn send_work_desc(&self, desc_builder: ToCardWorkRbDescBuilder) -> Result<(), Error> {
+        let desc = desc_builder.build()?;
+        self.0
+            .adaptor
+            .to_card_work_rb()
+            .push(desc)
+            .map_err(|_| Error::DeviceBusy)?;
+        Ok(())
+    }
 }

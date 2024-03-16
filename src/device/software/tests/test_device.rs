@@ -11,8 +11,9 @@ use crate::device::{
         logic::BlueRDMALogic,
         net_agent::udp_agent::{UDPReceiveAgent, UDPSendAgent},
     },
-    DeviceAdaptor, MemAccessTypeFlag, Pmtu, QpType, SoftwareDevice, ToCardWorkRbDescOpcode, ToHostWorkRbDesc,
+    DeviceAdaptor, SoftwareDevice, ToCardWorkRbDescOpcode, ToHostWorkRbDesc,
 };
+use crate::types::{MemAccessTypeFlag, Pmtu, QpType};
 
 use super::ToCardCtrlRbDescBuilder;
 
@@ -102,7 +103,7 @@ fn test_device_read_and_write() {
         let q1 = device.get_to_host_descriptor_queue().pop().unwrap();
         match q1 {
             ToHostWorkRbDesc::Write(data) => {
-                assert_eq!(data.common.dqpn, dqpn);
+                assert_eq!(data.common.dqpn.get(), dqpn);
                 assert!(matches!(data.write_type, ToHostWorkRbDescWriteType::First));
             }
             _ => panic!("unexpected descriptor"),
@@ -110,10 +111,10 @@ fn test_device_read_and_write() {
         let q2 = device.get_to_host_descriptor_queue().pop().unwrap();
         match q2 {
             ToHostWorkRbDesc::Write(data) => {
-                assert_eq!(data.common.dqpn, dqpn);
+                assert_eq!(data.common.dqpn.get(), dqpn);
                 assert!(matches!(data.write_type, ToHostWorkRbDescWriteType::Last));
                 assert_eq!(data.addr, dest_addr + 512);
-                assert_eq!(data.key, mr1_rkey);
+                assert_eq!(data.key.get(), mr1_rkey);
             }
             _ => panic!("unexpected descriptor"),
         }
@@ -160,7 +161,7 @@ fn test_device_read_and_write() {
         let q1 = device.get_to_host_descriptor_queue().pop().unwrap();
         match q1 {
             ToHostWorkRbDesc::Write(data) => {
-                assert_eq!(data.common.dqpn, dqpn);
+                assert_eq!(data.common.dqpn.get(), dqpn);
                 assert!(matches!(data.write_type, ToHostWorkRbDescWriteType::First));
                 assert_eq!(data.addr, dest_addr + testing_dest_addr_offset as u64);
             }
@@ -169,7 +170,7 @@ fn test_device_read_and_write() {
         let q2 = device.get_to_host_descriptor_queue().pop().unwrap();
         match q2 {
             ToHostWorkRbDesc::Write(data) => {
-                assert_eq!(data.common.dqpn, dqpn);
+                assert_eq!(data.common.dqpn.get(), dqpn);
                 assert!(matches!(data.write_type, ToHostWorkRbDescWriteType::Middle));
                 assert_eq!(data.addr, dest_addr + pmtu);
             }
@@ -178,7 +179,7 @@ fn test_device_read_and_write() {
         let q3 = device.get_to_host_descriptor_queue().pop().unwrap();
         match q3 {
             ToHostWorkRbDesc::Write(data) => {
-                assert_eq!(data.common.dqpn, dqpn);
+                assert_eq!(data.common.dqpn.get(), dqpn);
                 assert!(matches!(data.write_type, ToHostWorkRbDescWriteType::Last));
                 assert_eq!(data.addr, dest_addr + 2 * pmtu);
             }
@@ -372,7 +373,7 @@ fn test_software_device() {
         let q1 = to_host_work_rb.pop();
         match q1 {
             ToHostWorkRbDesc::Write(data) => {
-                assert_eq!(data.common.dqpn, dqpn);
+                assert_eq!(data.common.dqpn.get(), dqpn);
                 assert!(matches!(data.write_type, ToHostWorkRbDescWriteType::First));
             }
             _ => panic!("unexpected descriptor"),
@@ -380,10 +381,10 @@ fn test_software_device() {
         let q2 = to_host_work_rb.pop();
         match q2 {
             ToHostWorkRbDesc::Write(data) => {
-                assert_eq!(data.common.dqpn, dqpn);
+                assert_eq!(data.common.dqpn.get(), dqpn);
                 assert!(matches!(data.write_type, ToHostWorkRbDescWriteType::Last));
                 assert_eq!(data.addr, dest_addr + 512);
-                assert_eq!(data.key, mr1_rkey);
+                assert_eq!(data.key.get(), mr1_rkey);
             }
             _ => panic!("unexpected descriptor"),
         }
@@ -431,7 +432,7 @@ fn test_software_device() {
         let q1 = to_host_work_rb.pop();
         match q1 {
             ToHostWorkRbDesc::Write(data) => {
-                assert_eq!(data.common.dqpn, dqpn);
+                assert_eq!(data.common.dqpn.get(), dqpn);
                 assert!(matches!(data.write_type, ToHostWorkRbDescWriteType::First));
                 assert_eq!(data.addr, dest_addr + testing_dest_addr_offset as u64);
             }
@@ -440,7 +441,7 @@ fn test_software_device() {
         let q2 = to_host_work_rb.pop();
         match q2 {
             ToHostWorkRbDesc::Write(data) => {
-                assert_eq!(data.common.dqpn, dqpn);
+                assert_eq!(data.common.dqpn.get(), dqpn);
                 assert!(matches!(data.write_type, ToHostWorkRbDescWriteType::Middle));
                 assert_eq!(data.addr, dest_addr + pmtu);
             }
@@ -449,7 +450,7 @@ fn test_software_device() {
         let q3 = to_host_work_rb.pop();
         match q3 {
             ToHostWorkRbDesc::Write(data) => {
-                assert_eq!(data.common.dqpn, dqpn);
+                assert_eq!(data.common.dqpn.get(), dqpn);
                 assert!(matches!(data.write_type, ToHostWorkRbDescWriteType::Last));
                 assert_eq!(data.addr, dest_addr + 2 * pmtu);
             }

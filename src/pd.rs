@@ -1,4 +1,4 @@
-use crate::{Device, Error, Mr, Qp};
+use crate::{Device, Error, Mr, types::Qpn};
 use rand::RngCore as _;
 use std::{
     collections::HashSet,
@@ -13,7 +13,7 @@ pub struct Pd {
 
 pub(crate) struct PdCtx {
     pub(crate) mr: HashSet<Mr>,
-    pub(crate) qp: HashSet<Qp>,
+    pub(crate) qp: HashSet<Qpn>,
 }
 
 impl Device {
