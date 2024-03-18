@@ -7,29 +7,11 @@ use super::{
     ToCardWorkRbDesc, ToHostCtrlRbDesc, ToHostRb, ToHostWorkRbDesc,
 };
 use std::{
-    cell::{RefCell, RefMut},
     error::Error,
-    net::SocketAddr, sync::Arc,
+    net::SocketAddr, sync::{Arc, Mutex},
 };
 
 mod rpc_cli;
-
-pub(super) struct WrapRefCell<T>(RefCell<T>);
-impl<T> WrapRefCell<T> {
-    pub fn new(inner: T) -> Self {
-        Self(RefCell::new(inner))
-    }
-
-    pub fn get_mut(&self) -> RefMut<T> {
-        self.0.borrow_mut()
-    }
-
-    // pub fn write(&self) -> RefCell<T> {
-    //     self.0.borrow_mut()
-    // }
-}
-unsafe impl<T> Sync for WrapRefCell<T> {}
-unsafe impl<T> Send for WrapRefCell<T> {}
 
 type ToCardCtrlRb = Ringbuf<
     ToCardCtrlRbCsrProxy,
@@ -61,10 +43,11 @@ type ToHostWorkRb = Ringbuf<
 
 /// An emulated device implementation of the device.
 pub(crate) struct EmulatedDevice {
-    to_card_ctrl_rb: WrapRefCell<ToCardCtrlRb>,
-    to_host_ctrl_rb: WrapRefCell<ToHostCtrlRb>,
-    to_card_work_rb: WrapRefCell<ToCardWorkRb>,
-    to_host_work_rb: WrapRefCell<ToHostWorkRb>,
+    // FIXME: Temporarily ,we use Mutex to make the Rb imuumtable as well as thread safe
+    to_card_ctrl_rb: Mutex<ToCardCtrlRb>,
+    to_host_ctrl_rb: Mutex<ToHostCtrlRb>,
+    to_card_work_rb: Mutex<ToCardWorkRb>,
+    to_host_work_rb: Mutex<ToHostWorkRb>,
     heap_mem_start_addr: usize,
     rpc_cli: RpcClient,
 }
@@ -88,10 +71,10 @@ impl EmulatedDevice {
             ToHostWorkRb::new(ToHostWorkRbCsrProxy::new(rpc_cli.clone()));
 
         let dev = Arc::new(Self {
-            to_card_ctrl_rb: WrapRefCell::new(to_card_ctrl_rb),
-            to_host_ctrl_rb: WrapRefCell::new(to_host_ctrl_rb),
-            to_card_work_rb: WrapRefCell::new(to_card_work_rb),
-            to_host_work_rb: WrapRefCell::new(to_host_work_rb),
+            to_card_ctrl_rb: Mutex::new(to_card_ctrl_rb),
+            to_host_ctrl_rb: Mutex::new(to_host_ctrl_rb),
+            to_card_work_rb: Mutex::new(to_card_work_rb),
+            to_host_work_rb: Mutex::new(to_host_work_rb),
             heap_mem_start_addr,
             rpc_cli,
         });
@@ -172,7 +155,7 @@ impl DeviceAdaptor for Arc<EmulatedDevice> {
 
 impl ToCardRb<ToCardCtrlRbDesc> for EmulatedDevice {
     fn push(&self, desc: ToCardCtrlRbDesc) -> Result<(), Overflowed> {
-        let mut guard = self.to_card_ctrl_rb.get_mut();
+        let mut guard = self.to_card_ctrl_rb.lock().unwrap();
         let mut writer = guard.write();
 
         let mem = writer.next().unwrap();
@@ -184,7 +167,7 @@ impl ToCardRb<ToCardCtrlRbDesc> for EmulatedDevice {
 
 impl ToHostRb<ToHostCtrlRbDesc> for EmulatedDevice {
     fn pop(&self) -> ToHostCtrlRbDesc {
-        let mut guard = self.to_host_ctrl_rb.get_mut();
+        let mut guard = self.to_host_ctrl_rb.lock().unwrap();
         let mut reader = guard.read();
         let mem = reader.next().unwrap();
         ToHostCtrlRbDesc::read(mem)
@@ -196,7 +179,7 @@ impl ToCardRb<ToCardWorkRbDesc> for EmulatedDevice {
         let desc_cnt = desc.serialized_desc_cnt();
         // TODO: the card might not be able to handle "part of the desc"
         // So me might need to ensure we have enough space to write the whole desc before writing
-        let mut guard = self.to_card_work_rb.get_mut();
+        let mut guard = self.to_card_work_rb.lock().unwrap();;
         let mut writer = guard.write();
         desc.write_0(writer.next().unwrap());
         desc.write_1(writer.next().unwrap());
@@ -213,7 +196,7 @@ impl ToCardRb<ToCardWorkRbDesc> for EmulatedDevice {
 // TODO: refactor the mechanism to handle ringbuf. It's a kind of complex
 impl ToHostRb<ToHostWorkRbDesc> for EmulatedDevice {
     fn pop(&self) -> ToHostWorkRbDesc {
-        let mut guard = self.to_host_work_rb.get_mut();
+        let mut guard = self.to_host_work_rb.lock().unwrap();;
         let mut reader = guard.read();
 
         let mem = reader.next().unwrap();
