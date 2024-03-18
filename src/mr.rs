@@ -91,7 +91,9 @@ impl Device {
             pgte_cnt: pgte_cnt as u32,
         });
 
-        let res = self.do_ctrl_op(op_id, desc)?;
+        let ctx = self.do_ctrl_op(op_id, desc)?;
+        
+        let res = ctx.wait_result().unwrap();
 
         if !res {
             mr_pgt.dealloc(pgt_offset, pgte_cnt);
@@ -125,7 +127,9 @@ impl Device {
             pgt_offset: pgt_offset as u32,
         });
 
-        let res = self.do_ctrl_op(op_id, desc)?;
+        let ctx = self.do_ctrl_op(op_id, desc)?;
+
+        let res = ctx.wait_result().unwrap();
 
         if !res {
             return Err(Error::DeviceReturnFailed);
@@ -179,7 +183,9 @@ impl Device {
             pgt_offset: 0,
         });
 
-        let res = self.do_ctrl_op(op_id, desc)?;
+        let ctx = self.do_ctrl_op(op_id, desc)?;
+        
+        let res = ctx.wait_result().unwrap();
 
         if !res {
             return Err(Error::DeviceReturnFailed);

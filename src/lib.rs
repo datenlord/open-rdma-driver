@@ -7,6 +7,7 @@ use crate::{
     pd::PdCtx,
 };
 use device::{ToCardCtrlRbDescSge, ToCardWorkRbDescBuilder};
+use op_ctx::CtrlOpCtx;
 use pkt_checker::PacketChecker;
 use poll::work::WorkDescPoller;
 use qp::QpContext;
@@ -16,22 +17,24 @@ use std::{
     collections::HashMap,
     net::SocketAddr,
     sync::{
-        atomic::{AtomicBool, AtomicU32, Ordering}, Arc, Mutex, OnceLock, RwLock,
+        atomic::{AtomicBool, AtomicU32, Ordering},
+        Arc, Mutex, OnceLock, RwLock,
     },
-    thread::{self, Thread},
+    thread::{self},
 };
 use types::{Key, MemAccessTypeFlag, Psn, Qpn};
 use utils::calculate_packet_cnt;
 
 pub mod mr;
+pub mod op_ctx;
 pub mod pd;
 pub mod qp;
 pub mod types;
 
 mod device;
+mod pkt_checker;
 mod poll;
 mod recv_pkt_map;
-mod pkt_checker;
 mod responser;
 mod utils;
 
@@ -51,12 +54,12 @@ struct DeviceInner<D: ?Sized> {
     mr_table: Mutex<[Option<MrCtx>; MR_TABLE_SIZE]>,
     qp_table: Arc<RwLock<HashMap<Qpn, QpContext>>>,
     mr_pgt: Mutex<MrPgt>,
-    ctrl_op_ctx: Mutex<HashMap<u32, CtrlOpCtx>>,
+    ctrl_op_ctx: RwLock<HashMap<u32, CtrlOpCtx>>,
     next_ctrl_op_id: AtomicU32,
     qp_availability: Box<[AtomicBool]>,
     responser: OnceLock<DescResponser>,
-    work_desc_poller : OnceLock<WorkDescPoller>,
-    pkt_checker_thread : OnceLock<PacketChecker>,
+    work_desc_poller: OnceLock<WorkDescPoller>,
+    pkt_checker_thread: OnceLock<PacketChecker>,
     adaptor: D,
 }
 
@@ -64,16 +67,6 @@ pub struct Sge {
     pub addr: u64,
     pub len: u32,
     pub key: Key,
-}
-
-struct CtrlOpCtx {
-    thread: Thread,
-    result: Option<bool>,
-}
-
-struct WriteOpCtx {
-    thread: Thread,
-    result: Option<bool>,
 }
 
 impl Device {
@@ -93,14 +86,13 @@ impl Device {
             mr_table: Mutex::new([Self::MR_TABLE_EMPTY_ELEM; MR_TABLE_SIZE]),
             qp_table: qp_table.clone(),
             mr_pgt: Mutex::new(MrPgt::new()),
-            // read_op_ctx: Mutex::new(HashMap::new()),
-            ctrl_op_ctx: Mutex::new(HashMap::new()),
+            ctrl_op_ctx: RwLock::new(HashMap::new()),
             next_ctrl_op_id: AtomicU32::new(0),
             qp_availability: qp_availability.into_boxed_slice(),
             adaptor: HardwareDevice::init().map_err(Error::Device)?,
             responser: OnceLock::new(),
-            pkt_checker_thread : OnceLock::new(),
-            work_desc_poller : OnceLock::new(),
+            pkt_checker_thread: OnceLock::new(),
+            work_desc_poller: OnceLock::new(),
         });
 
         let dev = Self(inner);
@@ -123,12 +115,12 @@ impl Device {
             mr_table: Mutex::new([Self::MR_TABLE_EMPTY_ELEM; MR_TABLE_SIZE]),
             qp_table: qp_table.clone(),
             mr_pgt: Mutex::new(MrPgt::new()),
-            ctrl_op_ctx: Mutex::new(HashMap::new()),
+            ctrl_op_ctx: RwLock::new(HashMap::new()),
             next_ctrl_op_id: AtomicU32::new(0),
             qp_availability: qp_availability.into_boxed_slice(),
             responser: OnceLock::new(),
-            work_desc_poller : OnceLock::new(),
-            pkt_checker_thread : OnceLock::new(),
+            work_desc_poller: OnceLock::new(),
+            pkt_checker_thread: OnceLock::new(),
             adaptor: SoftwareDevice::init().map_err(Error::Device)?,
         });
 
@@ -155,12 +147,12 @@ impl Device {
             mr_table: Mutex::new([Self::MR_TABLE_EMPTY_ELEM; MR_TABLE_SIZE]),
             qp_table: qp_table.clone(),
             mr_pgt: Mutex::new(MrPgt::new()),
-            ctrl_op_ctx: Mutex::new(HashMap::new()),
+            ctrl_op_ctx: RwLock::new(HashMap::new()),
             next_ctrl_op_id: AtomicU32::new(0),
             qp_availability: qp_availability.into_boxed_slice(),
             responser: OnceLock::new(),
-            work_desc_poller : OnceLock::new(),
-            pkt_checker_thread : OnceLock::new(),
+            work_desc_poller: OnceLock::new(),
+            pkt_checker_thread: OnceLock::new(),
             adaptor: EmulatedDevice::init(rpc_server_addr, heap_mem_start_addr)
                 .map_err(Error::Device)?,
         });
@@ -263,21 +255,17 @@ impl Device {
         Ok(())
     }
 
-    fn do_ctrl_op(&self, id: u32, desc: ToCardCtrlRbDesc) -> Result<bool, Error> {
+    fn do_ctrl_op(&self, id: u32, desc: ToCardCtrlRbDesc) -> Result<CtrlOpCtx, Error> {
         // save operation context for unparking
-        {
-            let mut ctx = self.0.ctrl_op_ctx.lock().unwrap();
-
-            let old = ctx.insert(
-                id,
-                CtrlOpCtx {
-                    thread: thread::current(),
-                    result: None,
-                },
-            );
+        let ctrl_ctx ={
+            let mut ctx = self.0.ctrl_op_ctx.write().unwrap();
+            let ctrl_ctx = CtrlOpCtx::new_running();
+            
+            let old = ctx.insert(id, ctrl_ctx.clone());
 
             assert!(old.is_none());
-        }
+            ctrl_ctx
+        };
 
         // send desc to device
         self.0
@@ -286,35 +274,7 @@ impl Device {
             .push(desc)
             .map_err(|_| Error::DeviceBusy)?;
 
-        // park and wait
-        thread::park();
-
-        // unparked and poll result
-        let CtrlOpCtx {
-            thread: _,
-            result: Some(result),
-        } = (loop {
-            let mut ctx = self.0.ctrl_op_ctx.lock().unwrap();
-
-            match ctx.get(&id) {
-                Some(CtrlOpCtx {
-                    thread: _,
-                    result: Some(_),
-                }) => {}
-                Some(CtrlOpCtx {
-                    thread: _,
-                    result: None,
-                }) => continue,
-                None => return Err(Error::CtrlCtxLost),
-            }
-
-            break ctx.remove(&id).unwrap();
-        })
-        else {
-            unreachable!()
-        };
-
-        Ok(result)
+        Ok(ctrl_ctx)
     }
 
     fn get_ctrl_op_id(&self) -> u32 {
@@ -342,14 +302,14 @@ impl Device {
             self.0.qp_table.clone(),
             send_queue.clone(),
         );
-        if self.0.work_desc_poller.set(work_desc_poller).is_err(){
+        if self.0.work_desc_poller.set(work_desc_poller).is_err() {
             panic!("work_desc_poller has been set");
         }
         let pkt_checker_thread = PacketChecker::new(send_queue, recv_pkt_map);
-        if self.0.pkt_checker_thread.set(pkt_checker_thread).is_err(){
+        if self.0.pkt_checker_thread.set(pkt_checker_thread).is_err() {
             panic!("pkt_checker_thread has been set");
         }
-        
+
         thread::spawn(move || dev_for_poll_ctrl_rb.poll_ctrl_rb());
         Ok(())
     }

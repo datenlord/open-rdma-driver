@@ -1,15 +1,12 @@
 use crate::{
     device::{ToCardCtrlRbDesc, ToCardCtrlRbDescCommon, ToCardCtrlRbDescQpManagement},
-    types::{MemAccessTypeFlag, Pmtu, QpType, Qpn, Psn},
+    types::{MemAccessTypeFlag, Pmtu, Psn, QpType, Qpn},
     Device, Error, Pd,
 };
 use std::{
     hash::{Hash, Hasher},
     net::Ipv4Addr,
-    sync::{
-        atomic::Ordering,
-        Mutex,
-    },
+    sync::{atomic::Ordering, Mutex},
 };
 
 // // FIXME: don't use static here. It should belong to device
@@ -65,8 +62,9 @@ impl Device {
         let mut qp_pool = self.0.qp_table.write().unwrap();
         let mut pd_pool = self.0.pd.lock().unwrap();
 
-        // TODO: 
-        let Some(qpn) = self.0.qp_availability
+        let Some(qpn) = self
+            .0
+            .qp_availability
             .iter()
             .enumerate()
             .find_map(|(idx, n)| n.swap(false, Ordering::AcqRel).then_some(idx))
@@ -103,7 +101,9 @@ impl Device {
             pmtu: qp.pmtu.clone(),
         });
 
-        let res = self.do_ctrl_op(op_id, desc)?;
+        let ctx = self.do_ctrl_op(op_id, desc)?;
+
+        let res = ctx.wait_result().unwrap();
 
         if !res {
             return Err(Error::DeviceReturnFailed);
@@ -149,7 +149,9 @@ impl Device {
             return Err(Error::InvalidQp);
         };
 
-        let res = self.do_ctrl_op(op_id, desc)?;
+        let ctx = self.do_ctrl_op(op_id, desc)?;
+
+        let res = ctx.wait_result().unwrap();
 
         if !res {
             return Err(Error::DeviceReturnFailed);
