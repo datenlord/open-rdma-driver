@@ -7,15 +7,15 @@ use crate::{
     pd::PdCtx,
 };
 use device::{ToCardCtrlRbDescSge, ToCardWorkRbDescBuilder};
+use poll::work::WorkDescPoller;
 use qp::QpContext;
 use recv_pkt_map::RecvPktMap;
-use responser::{DescResponser, RespCommand, WorkDescriptorSender};
+use responser::{DescResponser, WorkDescriptorSender};
 use std::{
     collections::HashMap,
     net::SocketAddr,
     sync::{
-        atomic::{AtomicBool, AtomicU32, Ordering},
-        mpsc, Arc, Mutex, OnceLock, RwLock,
+        atomic::{AtomicBool, AtomicU32, Ordering}, Arc, Mutex, OnceLock, RwLock,
     },
     thread::{self, Thread},
 };
@@ -57,8 +57,7 @@ struct DeviceInner<D: ?Sized> {
     next_ctrl_op_id: AtomicU32,
     qp_availability: Box<[AtomicBool]>,
     responser: OnceLock<DescResponser>,
-    #[allow(dead_code)]
-    response_command_sender: std::sync::mpsc::Sender<RespCommand>,
+    work_desc_poller : OnceLock<WorkDescPoller>,
     adaptor: D,
 }
 
@@ -83,7 +82,6 @@ impl Device {
 
     pub fn new_hardware() -> Result<Self, Error> {
         let qp_table = Arc::new(RwLock::new(HashMap::new()));
-        let (response_command_sender, receiver) = std::sync::mpsc::channel();
         let qp_availability: Vec<AtomicBool> =
             (0..QP_MAX_CNT).map(|_| AtomicBool::new(true)).collect();
 
@@ -99,26 +97,30 @@ impl Device {
             // read_op_ctx: Mutex::new(HashMap::new()),
             write_op_ctx: Mutex::new(HashMap::new()),
             ctrl_op_ctx: Mutex::new(HashMap::new()),
-            revc_pkt_map: RecvPktMap::new(0, 0),
+            revc_pkt_map: RecvPktMap::new(0, Psn::new(0)),
             check_recv_pkt_comp_thread: OnceLock::new(),
             next_ctrl_op_id: AtomicU32::new(0),
             qp_availability: qp_availability.into_boxed_slice(),
             adaptor: HardwareDevice::init().map_err(Error::Device)?,
             responser: OnceLock::new(),
-            response_command_sender,
+            work_desc_poller : OnceLock::new(),
         });
 
         let dev = Self(inner);
-        dev.init(receiver)?;
+        dev.init()?;
 
         Ok(dev)
     }
 
     pub fn new_software() -> Result<Self, Error> {
         let qp_table = Arc::new(RwLock::new(HashMap::new()));
-        let (response_command_sender, receiver) = std::sync::mpsc::channel();
         let qp_availability: Vec<AtomicBool> =
             (0..QP_MAX_CNT).map(|_| AtomicBool::new(true)).collect();
+
+        // by IB spec, QP0 and QP1 are reserved, so qpn should start with 2
+        qp_availability[0].store(false, Ordering::Relaxed);
+        qp_availability[1].store(false, Ordering::Relaxed);
+
         let inner = Arc::new(DeviceInner {
             pd: Mutex::new(HashMap::new()),
             mr_table: Mutex::new([Self::MR_TABLE_EMPTY_ELEM; MR_TABLE_SIZE]),
@@ -127,17 +129,17 @@ impl Device {
             ctrl_op_ctx: Mutex::new(HashMap::new()),
             // read_op_ctx: Mutex::new(HashMap::new()),
             write_op_ctx: Mutex::new(HashMap::new()),
-            revc_pkt_map: RecvPktMap::new(0, 0),
+            revc_pkt_map: RecvPktMap::new(0, Psn::new(0)),
             check_recv_pkt_comp_thread: OnceLock::new(),
             next_ctrl_op_id: AtomicU32::new(0),
             qp_availability: qp_availability.into_boxed_slice(),
             responser: OnceLock::new(),
-            response_command_sender,
+            work_desc_poller : OnceLock::new(),
             adaptor: SoftwareDevice::init().map_err(Error::Device)?,
         });
 
         let dev = Self(inner);
-        dev.init(receiver)?;
+        dev.init()?;
 
         Ok(dev)
     }
@@ -147,13 +149,13 @@ impl Device {
         heap_mem_start_addr: usize,
     ) -> Result<Self, Error> {
         let qp_table = Arc::new(RwLock::new(HashMap::new()));
-        let (response_command_sender, receiver) = std::sync::mpsc::channel();
         let qp_availability: Vec<AtomicBool> =
             (0..QP_MAX_CNT).map(|_| AtomicBool::new(true)).collect();
 
         // by IB spec, QP0 and QP1 are reserved, so qpn should start with 2
         qp_availability[0].store(false, Ordering::Relaxed);
         qp_availability[1].store(false, Ordering::Relaxed);
+
         let inner = Arc::new(DeviceInner {
             pd: Mutex::new(HashMap::new()),
             mr_table: Mutex::new([Self::MR_TABLE_EMPTY_ELEM; MR_TABLE_SIZE]),
@@ -162,19 +164,19 @@ impl Device {
             ctrl_op_ctx: Mutex::new(HashMap::new()),
             // read_op_ctx: Mutex::new(HashMap::new()),
             write_op_ctx: Mutex::new(HashMap::new()),
-            revc_pkt_map: RecvPktMap::new(0, 0),
+            revc_pkt_map: RecvPktMap::new(0, Psn::new(0)),
             check_recv_pkt_comp_thread: OnceLock::new(),
             next_ctrl_op_id: AtomicU32::new(0),
             qp_availability: qp_availability.into_boxed_slice(),
             responser: OnceLock::new(),
-            response_command_sender,
+            work_desc_poller : OnceLock::new(),
             adaptor: EmulatedDevice::init(rpc_server_addr, heap_mem_start_addr)
                 .map_err(Error::Device)?,
         });
 
         let dev = Self(inner);
 
-        dev.init(receiver)?;
+        dev.init()?;
 
         Ok(dev)
     }
@@ -207,7 +209,7 @@ impl Device {
             let send_psn = &mut qp.inner.lock().unwrap().send_psn;
             common.psn = *send_psn;
             let packet_cnt = calculate_packet_cnt(qp.pmtu.clone(), raddr, total_len);
-            send_psn.wrapping_add(packet_cnt);
+            *send_psn = send_psn.wrapping_add(packet_cnt);
             common
         };
 
@@ -328,11 +330,12 @@ impl Device {
         self.0.next_ctrl_op_id.fetch_add(1, Ordering::AcqRel)
     }
 
-    fn init(&self, receiver: mpsc::Receiver<RespCommand>) -> Result<(), Error> {
+    fn init(&self) -> Result<(), Error> {
+        let (send_queue, rece_queue) = std::sync::mpsc::channel();
         let ack_buf = self.init_ack_buf()?;
         let responser = DescResponser::new(
             Arc::new(self.clone()),
-            receiver,
+            rece_queue,
             ack_buf,
             self.0.qp_table.clone(),
         );
@@ -341,10 +344,16 @@ impl Device {
         }
 
         let dev_for_poll_ctrl_rb = self.clone();
-        let dev_for_poll_work_rb = self.clone();
-
+        let work_desc_poller = WorkDescPoller::new(
+            self.0.adaptor.to_host_work_rb(),
+            Arc::new(RwLock::new(HashMap::new())),
+            self.0.qp_table.clone(),
+            send_queue,
+        );
+        if self.0.work_desc_poller.set(work_desc_poller).is_err(){
+            panic!("work_desc_poller has been set");
+        }
         thread::spawn(move || dev_for_poll_ctrl_rb.poll_ctrl_rb());
-        thread::spawn(move || dev_for_poll_work_rb.poll_work_rb());
         Ok(())
     }
 }

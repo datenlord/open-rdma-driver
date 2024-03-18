@@ -1,120 +1,305 @@
+use core::panic;
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex, RwLock},
+};
 
 use crate::{
     device::{
-        ToHostWorkRbDesc, ToHostWorkRbDescAck, ToHostWorkRbDescNack, ToHostWorkRbDescRead,
-        ToHostWorkRbDescWrite, ToHostWorkRbDescWriteType, ToHostWorkRbDescWriteWithImm,
+        ToHostRb, ToHostWorkRbDesc, ToHostWorkRbDescAck, ToHostWorkRbDescNack,
+        ToHostWorkRbDescRead, ToHostWorkRbDescStatus, ToHostWorkRbDescWrite,
+        ToHostWorkRbDescWriteType, ToHostWorkRbDescWriteWithImm,
     },
-    Device, RecvPktMap,
+    qp::QpContext,
+    responser::{RespCommand, RespReadRespCommand},
+    types::{Key, Qpn},
+    RecvPktMap,
 };
 
-impl Device {
-    pub(crate) fn poll_work_rb(self) {
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
+pub(crate) struct RKeyWithQpn {
+    key: Key,
+    qpn: Qpn,
+}
+
+impl RKeyWithQpn {
+    pub fn new(key: Key, qpn: Qpn) -> Self {
+        Self { key, qpn }
+    }
+}
+
+pub struct WorkDescPoller {
+    _thread: std::thread::JoinHandle<()>,
+}
+
+pub(crate) struct WorkDescPollerContext {
+    work_rb: Arc<dyn ToHostRb<ToHostWorkRbDesc>>,
+    recv_pkt_map: Arc<RwLock<HashMap<RKeyWithQpn, Mutex<RecvPktMap>>>>,
+    qp_table: Arc<RwLock<HashMap<Qpn, QpContext>>>,
+    sending_queue: std::sync::mpsc::Sender<RespCommand>,
+}
+
+unsafe impl Send for WorkDescPollerContext {}
+
+enum ThreadFlag {
+    Running,
+    Stopped(&'static str),
+}
+
+impl WorkDescPoller {
+    pub(crate) fn new(
+        work_rb: Arc<dyn ToHostRb<ToHostWorkRbDesc>>,
+        recv_pkt_map: Arc<RwLock<HashMap<RKeyWithQpn, Mutex<RecvPktMap>>>>,
+        qp_table: Arc<RwLock<HashMap<Qpn, QpContext>>>,
+        sending_queue: std::sync::mpsc::Sender<RespCommand>,
+    ) -> Self {
+        let ctx = WorkDescPollerContext {
+            work_rb,
+            recv_pkt_map,
+            qp_table,
+            sending_queue,
+        };
+        let thread = std::thread::spawn(move || WorkDescPollerContext::poll_working_thread(ctx));
+
+        Self { _thread: thread }
+    }
+}
+
+impl WorkDescPollerContext {
+    pub(crate) fn poll_working_thread(ctx: Self) {
         loop {
-            let desc = self.0.adaptor.to_host_work_rb().pop();
+            let desc = ctx.work_rb.pop();
 
-            // TODO: check desca status
-            eprintln!("recv hardware report metadata");
+            if !matches!(desc.common().status, ToHostWorkRbDescStatus::Normal) {
+                eprintln!("desc status is {:?}", desc.common().status);
+                continue;
+            }
 
-            match desc {
-                ToHostWorkRbDesc::Read(desc) => self.handle_work_desc_read(desc),
-                ToHostWorkRbDesc::Write(desc) => self.handle_work_desc_write(desc),
-                ToHostWorkRbDesc::WriteWithImm(desc) => self.handle_work_desc_write_with_imm(desc),
-                ToHostWorkRbDesc::Ack(desc) => self.handle_work_desc_ack(desc),
-                ToHostWorkRbDesc::Nack(desc) => self.handle_work_desc_nack(desc),
+            let flag = match desc {
+                ToHostWorkRbDesc::Read(desc) => ctx.handle_work_desc_read(desc),
+                ToHostWorkRbDesc::Write(desc) => ctx.handle_work_desc_write(desc),
+                ToHostWorkRbDesc::WriteWithImm(desc) => ctx.handle_work_desc_write_with_imm(desc),
+                ToHostWorkRbDesc::Ack(desc) => ctx.handle_work_desc_ack(desc),
+                ToHostWorkRbDesc::Nack(desc) => ctx.handle_work_desc_nack(desc),
+            };
+            match flag {
+                ThreadFlag::Stopped(reason) => {
+                    eprintln!("poll_work_rb stopped: {}", reason);
+                    return;
+                }
+                ThreadFlag::Running => {}
             }
         }
     }
 
-    fn handle_work_desc_read(&self, _desc: ToHostWorkRbDescRead) {
-        eprintln!("in handle_work_desc_read");
-        // let qp = self.0.qp.lock().unwrap().keys().next().unwrap().clone();
-        // let dev = self.clone();
-
-        // // spawn a new thread to avoid blocking the main polling thread
-        // thread::spawn(move || {
-        //     let res = dev.write(
-        //         qp,
-        //         desc.raddr,
-        //         desc.rkey,
-        //         0, // TODO: which flag should be used?
-        //         crate::Sge {
-        //             addr: desc.laddr,
-        //             len: desc.len,
-        //             key: desc.lkey,
-        //         },
-        //         None,
-        //         None,
-        //         None,
-        //     );
-
-        //     if let Err(err) = res {
-        //         eprintln!("responding read operation failed: {err}");
-        //     }
-        // });
+    fn handle_work_desc_read(&self, desc: ToHostWorkRbDescRead) -> ThreadFlag {
+        let command = RespCommand::ReadResponse(RespReadRespCommand { desc });
+        if self.sending_queue.send(command).is_err() {
+            ThreadFlag::Stopped("receive queue closed")
+        } else {
+            ThreadFlag::Running
+        }
     }
 
-    fn handle_work_desc_write(&self, desc: ToHostWorkRbDescWrite) {
-        eprintln!("in handle_work_desc_write");
-        let pkt_map = unsafe {
-            (&self.0.revc_pkt_map as *const _ as *mut RecvPktMap)
-                .as_mut()
-                .unwrap_unchecked()
-        };
+    fn handle_work_desc_write(&self, desc: ToHostWorkRbDescWrite) -> ThreadFlag {
+        // TODO: since we don't have the MSN currently, we use qpn+key as index.
+        // But it's just a temporary solution.
+        let fake_msn = RKeyWithQpn::new(desc.key, desc.common.dqpn);
 
-        // new pkt_map
         if matches!(
             desc.write_type,
             ToHostWorkRbDescWriteType::First | ToHostWorkRbDescWriteType::Only
         ) {
-            let dpqn = desc.common.dqpn;
-            let qp_table = self.0.qp_table.read().unwrap();
-            let qp_ctx = if let Some(qp_ctx) = qp_table.get(&dpqn){
-                qp_ctx
-            }else{
-                eprintln!("{:?} not found", dpqn.get());
-                return;
-            };
-            
+            let mut recv_pkt_map_guard = self.recv_pkt_map.write().unwrap();
             let real_payload_len = desc.len - desc.common.pad_cnt as u32;
+            let guard = self.qp_table.read().unwrap();
+
+            let pmtu = if let Some(qp_ctx) = guard.get(&desc.common.dqpn) {
+                qp_ctx.pmtu.clone()
+            } else {
+                eprintln!("{:?} not found", desc.common.dqpn.get());
+                return ThreadFlag::Running;
+            };
+            drop(guard);
+
+            let pmtu = u32::from(&pmtu);
 
             let first_pkt_len = if matches!(desc.write_type, ToHostWorkRbDescWriteType::First) {
-                u64::from(&qp_ctx.pmtu) - (desc.addr & (u64::from(&qp_ctx.pmtu) - 1))
+                pmtu as u64 - (desc.addr & (pmtu as u64 - 1))
             } else {
                 real_payload_len as u64
             };
 
-            let pkt_cnt =
-                1 + (real_payload_len - first_pkt_len as u32).div_ceil(u64::from(&qp_ctx.pmtu) as u32);
-
-            *pkt_map = RecvPktMap::new(pkt_cnt as usize, qp_ctx.inner.lock().unwrap().recv_psn.get());
-
-            drop(qp_table);
-
-            // unblock recv_pkt_comp_thread
-            self.0.check_recv_pkt_comp_thread.get().unwrap().unpark();
+            let pkt_cnt = 1 + (real_payload_len - first_pkt_len as u32).div_ceil(pmtu);
+            recv_pkt_map_guard.insert(
+                fake_msn.clone(),
+                Mutex::new(RecvPktMap::new(pkt_cnt as usize, desc.psn)),
+            );
         }
 
-        pkt_map.insert(desc.psn.get());
+        let guard = self.recv_pkt_map.read().unwrap();
+        if let Some(recv_pkt_map) = guard.get(&fake_msn) {
+            let mut recv_pkt_map = recv_pkt_map.lock().unwrap();
+            recv_pkt_map.insert(desc.psn);
+        } else {
+            eprintln!("recv_pkt_map not found for {:?}", fake_msn);
+        }
+        ThreadFlag::Running
     }
 
-    fn handle_work_desc_write_with_imm(&self, _desc: ToHostWorkRbDescWriteWithImm) {
+    fn handle_work_desc_write_with_imm(&self, _desc: ToHostWorkRbDescWriteWithImm) -> ThreadFlag {
         todo!()
     }
 
-    fn handle_work_desc_ack(&self, _desc: ToHostWorkRbDescAck) {
+    fn handle_work_desc_ack(&self, _desc: ToHostWorkRbDescAck) -> ThreadFlag {
         eprintln!("in handle_work_desc_ack");
-        let mut ctx_map = self.0.write_op_ctx.lock().unwrap();
 
-        let Some((_, ctx)) = ctx_map.iter_mut().next() else {
-            eprintln!("no send ctx found");
-            return;
-        };
-
-        ctx.result = Some(true);
-        ctx.thread.unpark();
+        // TODO: since we don't have MSN yet, we don't have enough information to clear
+        ThreadFlag::Running
     }
 
-    fn handle_work_desc_nack(&self, _desc: ToHostWorkRbDescNack) {
-        todo!()
+    fn handle_work_desc_nack(&self, _desc: ToHostWorkRbDescNack) -> ThreadFlag {
+        panic!("receive a nack");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{
+        collections::HashMap,
+        net::Ipv4Addr,
+        sync::{Arc, Mutex, RwLock},
+        thread::sleep,
+    };
+
+    use crate::{
+        device::{
+            ToHostRb, ToHostWorkRbDesc, ToHostWorkRbDescCommon, ToHostWorkRbDescRead,
+            ToHostWorkRbDescStatus, ToHostWorkRbDescTransType, ToHostWorkRbDescWrite,
+            ToHostWorkRbDescWriteType,
+        },
+        qp::QpContext,
+        responser::RespCommand,
+        types::{Key, MemAccessTypeFlag, Psn, Qpn},
+        Pd,
+    };
+
+    use super::WorkDescPoller;
+
+    struct MockToHostRb {
+        rb: Mutex<Vec<ToHostWorkRbDesc>>,
+    }
+    impl MockToHostRb {
+        fn new(v: Vec<ToHostWorkRbDesc>) -> Self {
+            MockToHostRb { rb: Mutex::new(v) }
+        }
+    }
+    impl ToHostRb<ToHostWorkRbDesc> for MockToHostRb {
+        fn pop(&self) -> ToHostWorkRbDesc {
+            let is_empty = self.rb.lock().unwrap().is_empty();
+            if is_empty{
+                sleep(std::time::Duration::from_secs(10))
+            }
+            self.rb.lock().unwrap().pop().unwrap()
+        }
+    }
+    #[test]
+    fn test_work_desc_poller() {
+        let mut input = vec![
+            // test writeFirst
+            ToHostWorkRbDesc::Write(ToHostWorkRbDescWrite {
+                common: ToHostWorkRbDescCommon {
+                    dqpn: Qpn::new(3),
+                    status: ToHostWorkRbDescStatus::Normal,
+                    trans: ToHostWorkRbDescTransType::Rc,
+                    pad_cnt: 0,
+                },
+                addr: 0,
+                len: 3192,
+                key: Key::new(0),
+                write_type: ToHostWorkRbDescWriteType::First,
+                psn: Psn::new(0),
+            }),
+            // test writeMiddle
+            ToHostWorkRbDesc::Write(ToHostWorkRbDescWrite {
+                common: ToHostWorkRbDescCommon {
+                    dqpn: Qpn::new(3),
+                    status: ToHostWorkRbDescStatus::Normal,
+                    trans: ToHostWorkRbDescTransType::Rc,
+                    pad_cnt: 0,
+                },
+                addr: 1024,
+                len: 1024,
+                key: Key::new(0),
+                write_type: ToHostWorkRbDescWriteType::First,
+                psn: Psn::new(1),
+            }),
+            // test writeLast
+            ToHostWorkRbDesc::Write(ToHostWorkRbDescWrite {
+                common: ToHostWorkRbDescCommon {
+                    dqpn: Qpn::new(3),
+                    status: ToHostWorkRbDescStatus::Normal,
+                    trans: ToHostWorkRbDescTransType::Rc,
+                    pad_cnt: 0,
+                },
+                addr: 1024,
+                len: 1024,
+                key: Key::new(0),
+                write_type: ToHostWorkRbDescWriteType::First,
+                psn: Psn::new(2),
+            }),
+            // test read
+            ToHostWorkRbDesc::Read(ToHostWorkRbDescRead {
+                common: ToHostWorkRbDescCommon {
+                    dqpn: Qpn::new(3),
+                    status: ToHostWorkRbDescStatus::Normal,
+                    trans: ToHostWorkRbDescTransType::Rc,
+                    pad_cnt: 0,
+                },
+                len: 2048,
+                laddr: 0,
+                lkey: Key::new(0),
+                raddr: 0,
+                rkey: Key::new(0),
+            }),
+        ];
+        input.reverse();
+
+        let work_rb = Arc::new(MockToHostRb::new(input));
+        let recv_pkt_map = Arc::new(RwLock::new(HashMap::new()));
+        let qp_table = Arc::new(RwLock::new(HashMap::new()));
+        qp_table.write().unwrap().insert(
+            Qpn::new(3),
+            QpContext {
+                handle: 0,
+                pd: Pd { handle: 0 },
+                qpn: Qpn::new(3),
+                qp_type: crate::types::QpType::Rc,
+                rq_acc_flags: MemAccessTypeFlag::IbvAccessRemoteWrite,
+                pmtu: crate::types::Pmtu::Mtu1024,
+                dqp_ip: Ipv4Addr::LOCALHOST,
+                mac_addr: [0; 6],
+                inner: Mutex::new(crate::qp::QpInner {
+                    send_psn: Psn::new(0),
+                    recv_psn: Psn::new(0),
+                }),
+            },
+        );
+        let (sending_queue, recv_queue) = std::sync::mpsc::channel::<RespCommand>();
+
+        let poller = WorkDescPoller::new(work_rb, recv_pkt_map, qp_table, sending_queue);
+        sleep(std::time::Duration::from_millis(10));
+        let item = recv_queue.recv().unwrap();
+        match item {
+            RespCommand::ReadResponse(res) => {
+                assert_eq!(res.desc.len, 2048);
+                assert_eq!(res.desc.laddr, 0);
+                assert_eq!(res.desc.lkey, Key::new(0));
+                assert_eq!(res.desc.raddr, 0);
+                assert_eq!(res.desc.rkey, Key::new(0));
+            }
+            _ => panic!("unexpected item"),
+        }
+
     }
 }

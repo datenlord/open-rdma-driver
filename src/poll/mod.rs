@@ -1,2 +1,2 @@
 mod ctrl;
-mod work;
+pub mod work;

@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use thiserror::Error;
 
 mod constants;
@@ -16,11 +18,11 @@ pub(crate) use self::{
 
 /// Public interface for a device. Can be a real hardware device or a software emulation.
 pub(crate) trait DeviceAdaptor: Send + Sync {
-    fn to_card_ctrl_rb(&self) -> &dyn ToCardRb<ToCardCtrlRbDesc>;
-    fn to_host_ctrl_rb(&self) -> &dyn ToHostRb<ToHostCtrlRbDesc>;
+    fn to_card_ctrl_rb(&self) -> Arc<dyn ToCardRb<ToCardCtrlRbDesc>>;
+    fn to_host_ctrl_rb(&self) -> Arc<dyn ToHostRb<ToHostCtrlRbDesc>>;
 
-    fn to_card_work_rb(&self) -> &dyn ToCardRb<ToCardWorkRbDesc>;
-    fn to_host_work_rb(&self) -> &dyn ToHostRb<ToHostWorkRbDesc>;
+    fn to_card_work_rb(&self) -> Arc<dyn ToCardRb<ToCardWorkRbDesc>>;
+    fn to_host_work_rb(&self) -> Arc<dyn ToHostRb<ToHostWorkRbDesc>>;
 
     fn read_csr(&self, addr: usize) -> u32;
     fn write_csr(&self, addr: usize, data: u32);

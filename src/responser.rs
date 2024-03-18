@@ -103,13 +103,14 @@ impl DescResponser {
                         eprintln!("Failed to write ack/nack packet: {:?}", e);
                         continue;
                     }
-                    let sge = ack_buffers.convert_buf_into_sge(ack_buf, ACKPACKET_SIZE as u32);
+                    let sge = ack_buffers.convert_buf_into_sge(&ack_buf, ACKPACKET_SIZE as u32);
                     let desc_builder = ToCardWorkRbDescBuilder::new_write()
                         .with_common(common)
                         .with_sge(sge);
                     if let Err(e) = device.send_work_desc(desc_builder) {
                         eprintln!("Failed to push ack/nack packet: {:?}", e);
                     }
+                    ack_buffers.free(ack_buf);
                 }
                 Ok(RespCommand::ReadResponse(resp)) => {
                     // send read response to device
@@ -131,7 +132,7 @@ impl DescResponser {
                             let send_psn = &mut qp.inner.lock().unwrap().send_psn;
                             common.psn = *send_psn;
                             let packet_cnt = calculate_packet_cnt(qp.pmtu.clone(), resp.desc.raddr, resp.desc.len);
-                            send_psn.wrapping_add(packet_cnt);
+                            *send_psn = send_psn.wrapping_add(packet_cnt);
                             common
                         }
                         None => {
@@ -223,18 +224,17 @@ impl AcknowledgeBuffer {
         }
     }
 
-    #[allow(unused)]
     pub fn free(&self, buf: Slot) {
         // check if the buffer is within the range
         let start = self.start_va as *const u8;
         let end = start.wrapping_add(self.length);
         let buf_start = buf.as_ptr();
         let buf_end = buf_start.wrapping_add(AcknowledgeBuffer::ACKNOWLEDGE_BUFFER_SLOT_SIZE);
-        assert!(buf_start < start && buf_end > end);
+        assert!(buf_start >= start && buf_end <= end && buf.len() == Self::ACKNOWLEDGE_BUFFER_SLOT_SIZE);
         self.free_list.push(Some(buf));
     }
 
-    pub fn convert_buf_into_sge(&self, buf: Slot, real_length: u32) -> Sge {
+    pub fn convert_buf_into_sge(&self, buf: &Slot, real_length: u32) -> Sge {
         Sge {
             addr: buf.as_ptr() as u64,
             len: real_length,
@@ -502,7 +502,7 @@ mod tests {
                 pmtu: Pmtu::Mtu4096,
                 dqp_ip: std::net::Ipv4Addr::LOCALHOST,
                 mac_addr: [0u8; 6],
-                inner: std::sync::Mutex::new(crate::qp::QpCtx {
+                inner: std::sync::Mutex::new(crate::qp::QpInner {
                     send_psn: Psn::default(),
                     recv_psn: Psn::default(),
                 }),

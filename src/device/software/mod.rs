@@ -48,9 +48,13 @@ pub(crate) struct SoftwareDevice {
     to_host_work_rb: ToHostWorkRb,
 }
 
+#[derive(Clone)]
 struct ToCardCtrlRb(Arc<BlueRDMALogic>);
+#[derive(Clone)]
 struct ToHostCtrlRb;
+#[derive(Clone)]
 struct ToCardWorkRb(Arc<DescriptorScheduler>);
+#[derive(Clone)]
 struct ToHostWorkRb(Arc<SegQueue<ToHostWorkRbDesc>>);
 
 impl SoftwareDevice {
@@ -86,20 +90,20 @@ impl SoftwareDevice {
 }
 
 impl DeviceAdaptor for SoftwareDevice {
-    fn to_card_ctrl_rb(&self) -> &dyn ToCardRb<ToCardCtrlRbDesc> {
-        &self.to_card_ctrl_rb
+    fn to_card_ctrl_rb(&self) -> Arc<dyn ToCardRb<ToCardCtrlRbDesc>> {
+        Arc::new(self.to_card_ctrl_rb.clone())
     }
 
-    fn to_host_ctrl_rb(&self) -> &dyn ToHostRb<ToHostCtrlRbDesc> {
-        &self.to_host_ctrl_rb
+    fn to_host_ctrl_rb(&self) -> Arc<dyn ToHostRb<ToHostCtrlRbDesc>> {
+        todo!()
     }
 
-    fn to_card_work_rb(&self) -> &dyn ToCardRb<ToCardWorkRbDesc> {
-        &self.to_card_work_rb
+    fn to_card_work_rb(&self) -> Arc<dyn ToCardRb<ToCardWorkRbDesc>> {
+        Arc::new(self.to_card_work_rb.clone())
     }
 
-    fn to_host_work_rb(&self) -> &dyn ToHostRb<ToHostWorkRbDesc> {
-        &self.to_host_work_rb
+    fn to_host_work_rb(&self) -> Arc<dyn ToHostRb<ToHostWorkRbDesc>> {
+        Arc::new(self.to_host_work_rb.clone())
     }
 
     fn read_csr(&self, _addr: usize) -> u32 {

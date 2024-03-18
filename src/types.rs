@@ -99,8 +99,27 @@ impl ThreeBytesStruct {
         Self::new(u32::from_le_bytes([key[2], key[1], key[0], 0]))
     }
 
-    pub fn wrapping_add(&mut self, rhs: u32){
-        self.0 = (self.0 + rhs) % Self::MAX;
+    pub fn wrapping_add(&self, rhs: u32) -> Self {
+        Self((self.0 + rhs) % Self::MAX)
+    }
+
+    pub fn wrapping_sub(&self, rhs: u32) -> Self {
+        if self.0 > rhs {
+            Self(self.0 - rhs)
+        } else {
+            Self(Self::MAX - rhs + self.0)
+        }
+    }
+
+    /// The absolute difference between two PSN
+    /// We assume that the bigger PSN should not exceed the 
+    /// smaller PSN by more than 2^23(that half of the range)
+    pub fn wrapping_abs(&self,rhs : Psn) -> u32{
+        if self.0 >= rhs.0{
+            self.0 - rhs.get()
+        }else{
+            self.0 + Self::MAX - rhs.0
+        }
     }
 }
 
@@ -212,40 +231,45 @@ pub enum Error {
 }
 
 #[cfg(test)]
-mod tests{
-    use std::slice::from_raw_parts;
+mod tests {
     use crate::types::Psn;
+    use std::slice::from_raw_parts;
 
     #[test]
-    fn test_wrapping_add(){
-        let mut psn = Psn::new(0xffffff);
-        psn.wrapping_add(1);
-        assert_eq!(psn.get(), 0);
+    fn test_wrapping_add() {
+        let psn = Psn::new(0xffffff);
+        let ret = psn.wrapping_add(1);
+        assert_eq!(psn.get(), ret.get());
 
-        psn.wrapping_add(2);
-        assert_eq!(psn.get(), 2);
+        let ret = psn.wrapping_add(2);
+        assert_eq!(ret.get(), 2);
 
-        psn.wrapping_add(0xffffff);
-        assert_eq!(psn.get(), 1);
+        let ret = psn.wrapping_add(0xffffff);
+        assert_eq!(ret.get(), 1);
     }
 
     #[test]
-    fn test_to_be(){
+    fn test_to_be() {
         let psn = Psn::new(0x123456);
         let mem = psn.into_be();
-        let buf = unsafe{
-            from_raw_parts(&mem as *const _ as *const u8, 4)
-        };
+        let buf = unsafe { from_raw_parts(&mem as *const _ as *const u8, 4) };
         assert_eq!(buf, &[0x12, 0x34, 0x56, 0]);
         assert_eq!(Psn::from_be(mem).get(), 0x123456);
 
         let key = crate::types::Key::new(0x12345678);
         let mem = key.into_be();
-        let buf = unsafe{
-            from_raw_parts(&mem as *const _ as *const u8, 4)
-        };
+        let buf = unsafe { from_raw_parts(&mem as *const _ as *const u8, 4) };
         assert_eq!(buf, &[0x12, 0x34, 0x56, 0x78]);
         assert_eq!(crate::types::Key::from_be(mem).get(), 0x12345678);
+    }
 
+    #[test]
+    fn test_wrapping_abs(){
+        let psn = Psn::new(0);
+        let psn2 = psn.wrapping_sub(1);
+        assert_eq!(psn2.get(),0xffffff);
+
+        let psn = psn.wrapping_abs(psn2);
+        assert_eq!(psn,1);
     }
 }

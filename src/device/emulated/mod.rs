@@ -9,7 +9,7 @@ use super::{
 use std::{
     cell::{RefCell, RefMut},
     error::Error,
-    net::SocketAddr,
+    net::SocketAddr, sync::Arc,
 };
 
 mod rpc_cli;
@@ -75,7 +75,7 @@ impl EmulatedDevice {
     pub(crate) fn init(
         rpc_server_addr: SocketAddr,
         heap_mem_start_addr: usize,
-    ) -> Result<Self, Box<dyn Error>> {
+    ) -> Result<Arc<Self>, Box<dyn Error>> {
         let rpc_cli = RpcClient::new(rpc_server_addr)?;
 
         let (to_card_ctrl_rb, to_card_ctrl_rb_addr) =
@@ -87,14 +87,14 @@ impl EmulatedDevice {
         let (to_host_work_rb, to_host_work_rb_addr) =
             ToHostWorkRb::new(ToHostWorkRbCsrProxy::new(rpc_cli.clone()));
 
-        let dev = Self {
+        let dev = Arc::new(Self {
             to_card_ctrl_rb: WrapRefCell::new(to_card_ctrl_rb),
             to_host_ctrl_rb: WrapRefCell::new(to_host_ctrl_rb),
             to_card_work_rb: WrapRefCell::new(to_card_work_rb),
             to_host_work_rb: WrapRefCell::new(to_host_work_rb),
             heap_mem_start_addr,
             rpc_cli,
-        };
+        });
 
         let pa_of_ringbuf = dev.get_phys_addr(to_card_ctrl_rb_addr);
         dev.rpc_cli.write_csr(
@@ -140,21 +140,21 @@ impl EmulatedDevice {
     }
 }
 
-impl DeviceAdaptor for EmulatedDevice {
-    fn to_card_ctrl_rb(&self) -> &dyn ToCardRb<ToCardCtrlRbDesc> {
-        self
+impl DeviceAdaptor for Arc<EmulatedDevice> {
+    fn to_card_ctrl_rb(&self) -> Arc<dyn ToCardRb<ToCardCtrlRbDesc>> {
+        self.clone()
     }
 
-    fn to_host_ctrl_rb(&self) -> &dyn ToHostRb<ToHostCtrlRbDesc> {
-        self
+    fn to_host_ctrl_rb(&self) -> Arc<dyn ToHostRb<ToHostCtrlRbDesc>> {
+        self.clone()
     }
 
-    fn to_card_work_rb(&self) -> &dyn ToCardRb<ToCardWorkRbDesc> {
-        self
+    fn to_card_work_rb(&self) -> Arc<dyn ToCardRb<ToCardWorkRbDesc>> {
+        self.clone()
     }
 
-    fn to_host_work_rb(&self) -> &dyn ToHostRb<ToHostWorkRbDesc> {
-        self
+    fn to_host_work_rb(&self) -> Arc<dyn ToHostRb<ToHostWorkRbDesc>> {
+        self.clone()
     }
 
     fn read_csr(&self, addr: usize) -> u32 {
@@ -218,8 +218,6 @@ impl ToHostRb<ToHostWorkRbDesc> for EmulatedDevice {
 
         let mem = reader.next().unwrap();
         let mut read_res = ToHostWorkRbDesc::read(mem);
-
-        
 
         loop {
             match read_res {

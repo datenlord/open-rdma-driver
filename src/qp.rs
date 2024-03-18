@@ -36,7 +36,7 @@ pub struct QpContext {
     pub(crate) pmtu: Pmtu,
     pub(crate) dqp_ip: Ipv4Addr,
     pub(crate) mac_addr: [u8; 6],
-    pub(crate) inner: Mutex<QpCtx>,
+    pub(crate) inner: Mutex<QpInner>,
 }
 
 impl Qp {
@@ -45,8 +45,9 @@ impl Qp {
     }
 }
 
-pub(crate) struct QpCtx {
+pub(crate) struct QpInner {
     pub(crate) send_psn: Psn,
+    #[allow(dead_code)]
     pub(crate) recv_psn: Psn,
 }
 
@@ -82,7 +83,7 @@ impl Device {
             pmtu: pmtu.clone(),
             dqp_ip,
             mac_addr,
-            inner: Mutex::new(QpCtx {
+            inner: Mutex::new(QpInner {
                 send_psn: Psn::new(0),
                 recv_psn: Psn::new(0),
             }),

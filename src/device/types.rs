@@ -43,6 +43,18 @@ pub(crate) enum ToHostWorkRbDesc {
     Nack(ToHostWorkRbDescNack),
 }
 
+impl ToHostWorkRbDesc {
+    pub(crate) fn common(&self) -> &ToHostWorkRbDescCommon{
+        match self {
+            ToHostWorkRbDesc::Read(desc) => &desc.common,
+            ToHostWorkRbDesc::Write(desc) => &desc.common,
+            ToHostWorkRbDesc::WriteWithImm(desc) => &desc.common,
+            ToHostWorkRbDesc::Ack(desc) => &desc.common,
+            ToHostWorkRbDesc::Nack(desc) => &desc.common,
+        }
+    }
+}
+
 pub(crate) struct ToCardCtrlRbDescCommon {
     pub(crate) op_id: u32, // user_data
 }
@@ -190,7 +202,7 @@ pub(crate) struct ToCardCtrlRbDescSge {
     pub(crate) key: Key,
 }
 
-#[derive(TryFromPrimitive)]
+#[derive(TryFromPrimitive,Debug)]
 #[repr(u8)]
 pub(crate) enum ToHostWorkRbDescStatus {
     Normal = 1,
