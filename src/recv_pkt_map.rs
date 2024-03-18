@@ -4,13 +4,14 @@ use crate::types::{Psn, Qpn};
 
 pub(crate) struct RecvPktMap {
     start_psn: Psn,
+    end_psn: Psn,
     stage_0: Box<[u64]>,
     stage_0_last_chunk: u64,
     stage_1: Box<[u64]>,
     stage_1_last_chunk: u64,
     stage_2: Box<[u64]>,
     stage_2_last_chunk: u64,
-    last_psn: Psn,
+    last_pkt_psn: Psn,
     is_out_of_order: bool,
     dqpn: Qpn,
 }
@@ -37,13 +38,14 @@ impl RecvPktMap {
 
         Self {
             start_psn,
+            end_psn: start_psn.wrapping_add(pkt_cnt as u32 - 1),
             stage_0,
             stage_0_last_chunk,
             stage_1,
             stage_1_last_chunk,
             stage_2,
             stage_2_last_chunk,
-            last_psn: start_psn.wrapping_sub(1),
+            last_pkt_psn: start_psn.wrapping_sub(1),
             is_out_of_order: false,
             dqpn,
         }
@@ -75,10 +77,10 @@ impl RecvPktMap {
         let stage_2_rem = stage_1_idx & Self::LAST_CHUNK_MOD_MASK; // bit position in u64
         let stage_2_bit = (is_stage_1_chunk_complete as u64) << stage_2_rem; // bit mask
         self.stage_2[stage_2_idx] |= stage_2_bit; // set bit in stage 2
-        if self.last_psn.wrapping_add(1) != new_psn {
+        if self.last_pkt_psn.wrapping_add(1) != new_psn {
             self.is_out_of_order = true;
         }
-        self.last_psn = new_psn;
+        self.last_pkt_psn = new_psn;
     }
 
     pub(crate) fn is_out_of_order(&self) -> bool {
@@ -98,7 +100,11 @@ impl RecvPktMap {
             })
     }
 
-    pub(crate) fn get_dqpn(&self) -> Qpn {
+    pub(crate) fn dqpn(&self) -> Qpn {
         self.dqpn
+    }
+
+    pub(crate) fn end_psn(&self) -> Psn {
+        self.end_psn
     }
 }

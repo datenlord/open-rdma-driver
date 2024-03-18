@@ -7,9 +7,9 @@ use crate::{
     pd::PdCtx,
 };
 use device::{ToCardCtrlRbDescSge, ToCardWorkRbDescBuilder};
-use op_ctx::CtrlOpCtx;
+use op_ctx::{CtrlOpCtx, ReadOpCtx, WriteOpCtx};
 use pkt_checker::PacketChecker;
-use poll::work::WorkDescPoller;
+use poll::work::{QpnWithLastPsn, WorkDescPoller};
 use qp::QpContext;
 use recv_pkt_map::RecvPktMap;
 use responser::{DescResponser, WorkDescriptorSender};
@@ -54,7 +54,9 @@ struct DeviceInner<D: ?Sized> {
     mr_table: Mutex<[Option<MrCtx>; MR_TABLE_SIZE]>,
     qp_table: Arc<RwLock<HashMap<Qpn, QpContext>>>,
     mr_pgt: Mutex<MrPgt>,
-    ctrl_op_ctx: RwLock<HashMap<u32, CtrlOpCtx>>,
+    read_op_ctx_map: Arc<RwLock<HashMap<QpnWithLastPsn, ReadOpCtx>>>,
+    write_op_ctx_map: Arc<RwLock<HashMap<QpnWithLastPsn, WriteOpCtx>>>,
+    ctrl_op_ctx_map: RwLock<HashMap<u32, CtrlOpCtx>>,
     next_ctrl_op_id: AtomicU32,
     qp_availability: Box<[AtomicBool]>,
     responser: OnceLock<DescResponser>,
@@ -86,7 +88,9 @@ impl Device {
             mr_table: Mutex::new([Self::MR_TABLE_EMPTY_ELEM; MR_TABLE_SIZE]),
             qp_table: qp_table.clone(),
             mr_pgt: Mutex::new(MrPgt::new()),
-            ctrl_op_ctx: RwLock::new(HashMap::new()),
+            read_op_ctx_map: Arc::new(RwLock::new(HashMap::new())),
+            write_op_ctx_map: Arc::new(RwLock::new(HashMap::new())),
+            ctrl_op_ctx_map: RwLock::new(HashMap::new()),
             next_ctrl_op_id: AtomicU32::new(0),
             qp_availability: qp_availability.into_boxed_slice(),
             adaptor: HardwareDevice::init().map_err(Error::Device)?,
@@ -115,7 +119,9 @@ impl Device {
             mr_table: Mutex::new([Self::MR_TABLE_EMPTY_ELEM; MR_TABLE_SIZE]),
             qp_table: qp_table.clone(),
             mr_pgt: Mutex::new(MrPgt::new()),
-            ctrl_op_ctx: RwLock::new(HashMap::new()),
+            read_op_ctx_map: Arc::new(RwLock::new(HashMap::new())),
+            write_op_ctx_map: Arc::new(RwLock::new(HashMap::new())),
+            ctrl_op_ctx_map: RwLock::new(HashMap::new()),
             next_ctrl_op_id: AtomicU32::new(0),
             qp_availability: qp_availability.into_boxed_slice(),
             responser: OnceLock::new(),
@@ -147,7 +153,9 @@ impl Device {
             mr_table: Mutex::new([Self::MR_TABLE_EMPTY_ELEM; MR_TABLE_SIZE]),
             qp_table: qp_table.clone(),
             mr_pgt: Mutex::new(MrPgt::new()),
-            ctrl_op_ctx: RwLock::new(HashMap::new()),
+            read_op_ctx_map: Arc::new(RwLock::new(HashMap::new())),
+            write_op_ctx_map: Arc::new(RwLock::new(HashMap::new())),
+            ctrl_op_ctx_map: RwLock::new(HashMap::new()),
             next_ctrl_op_id: AtomicU32::new(0),
             qp_availability: qp_availability.into_boxed_slice(),
             responser: OnceLock::new(),
@@ -164,46 +172,6 @@ impl Device {
         Ok(dev)
     }
 
-    pub fn read(
-        &self,
-        qpn: Qpn,
-        raddr: u64,
-        rkey: Key,
-        flags: MemAccessTypeFlag,
-        sge: Sge,
-    ) -> Result<(), Error> {
-        let common = {
-            let qp_table = self.0.qp_table.read().unwrap();
-            let qp = qp_table.get(&qpn).ok_or(Error::InvalidQp)?;
-
-            let total_len = sge.len;
-            let mut common = ToCardWorkRbDescCommon {
-                total_len,
-                raddr,
-                rkey,
-                dqp_ip: qp.dqp_ip,
-                dqpn: qpn,
-                mac_addr: qp.mac_addr,
-                pmtu: qp.pmtu.clone(),
-                flags,
-                qp_type: qp.qp_type,
-                psn: Psn::default(),
-            };
-            let send_psn = &mut qp.inner.lock().unwrap().send_psn;
-            common.psn = *send_psn;
-            let packet_cnt = calculate_packet_cnt(qp.pmtu.clone(), raddr, total_len);
-            *send_psn = send_psn.wrapping_add(packet_cnt);
-            common
-        };
-
-        let builder = ToCardWorkRbDescBuilder::new_read()
-            .with_common(common)
-            .with_sge(sge);
-        self.send_work_desc(builder)?;
-
-        Ok(())
-    }
-
     #[allow(clippy::too_many_arguments)]
     pub fn write(
         &self,
@@ -215,8 +183,8 @@ impl Device {
         sge1: Option<Sge>,
         sge2: Option<Sge>,
         sge3: Option<Sge>,
-    ) -> Result<(), Error> {
-        let common = {
+    ) -> Result<WriteOpCtx, Error> {
+        let (common, last_pkt_psn) = {
             let qp_table = self.0.qp_table.read().unwrap();
             let qp = qp_table.get(&qpn).ok_or(Error::InvalidQp)?;
             let total_len = sge0.len
@@ -240,7 +208,7 @@ impl Device {
             common.psn = *send_psn;
             let packet_cnt = calculate_packet_cnt(qp.pmtu.clone(), raddr, total_len);
             send_psn.wrapping_add(packet_cnt);
-            common
+            (common, send_psn.wrapping_sub(1))
         };
 
         let builder = ToCardWorkRbDescBuilder::new_write()
@@ -252,15 +220,71 @@ impl Device {
 
         self.send_work_desc(builder)?;
 
-        Ok(())
+        let ctx = WriteOpCtx::new_running();
+        let key = QpnWithLastPsn::new(qpn, last_pkt_psn);
+        self.0
+            .write_op_ctx_map
+            .write()
+            .unwrap()
+            .insert(key, ctx.clone());
+
+        Ok(ctx)
+    }
+
+    pub fn read(
+        &self,
+        qpn: Qpn,
+        raddr: u64,
+        rkey: Key,
+        flags: MemAccessTypeFlag,
+        sge: Sge,
+    ) -> Result<ReadOpCtx, Error> {
+        let (common, last_pkt_psn) = {
+            let qp_table = self.0.qp_table.read().unwrap();
+            let qp = qp_table.get(&qpn).ok_or(Error::InvalidQp)?;
+
+            let total_len = sge.len;
+            let mut common = ToCardWorkRbDescCommon {
+                total_len,
+                raddr,
+                rkey,
+                dqp_ip: qp.dqp_ip,
+                dqpn: qpn,
+                mac_addr: qp.mac_addr,
+                pmtu: qp.pmtu.clone(),
+                flags,
+                qp_type: qp.qp_type,
+                psn: Psn::default(),
+            };
+            let send_psn = &mut qp.inner.lock().unwrap().send_psn;
+            common.psn = *send_psn;
+            let packet_cnt = calculate_packet_cnt(qp.pmtu.clone(), raddr, total_len);
+            *send_psn = send_psn.wrapping_add(packet_cnt);
+            (common, send_psn.wrapping_sub(1))
+        };
+
+        let builder = ToCardWorkRbDescBuilder::new_read()
+            .with_common(common)
+            .with_sge(sge);
+        self.send_work_desc(builder)?;
+
+        let ctx = WriteOpCtx::new_running();
+        let key = QpnWithLastPsn::new(qpn, last_pkt_psn);
+        self.0
+            .read_op_ctx_map
+            .write()
+            .unwrap()
+            .insert(key, ctx.clone());
+
+        Ok(ctx)
     }
 
     fn do_ctrl_op(&self, id: u32, desc: ToCardCtrlRbDesc) -> Result<CtrlOpCtx, Error> {
         // save operation context for unparking
-        let ctrl_ctx ={
-            let mut ctx = self.0.ctrl_op_ctx.write().unwrap();
+        let ctrl_ctx = {
+            let mut ctx = self.0.ctrl_op_ctx_map.write().unwrap();
             let ctrl_ctx = CtrlOpCtx::new_running();
-            
+
             let old = ctx.insert(id, ctrl_ctx.clone());
 
             assert!(old.is_none());
@@ -301,11 +325,13 @@ impl Device {
             recv_pkt_map.clone(),
             self.0.qp_table.clone(),
             send_queue.clone(),
+            self.0.read_op_ctx_map.clone(),
         );
         if self.0.work_desc_poller.set(work_desc_poller).is_err() {
             panic!("work_desc_poller has been set");
         }
-        let pkt_checker_thread = PacketChecker::new(send_queue, recv_pkt_map);
+        let pkt_checker_thread =
+            PacketChecker::new(send_queue, recv_pkt_map, self.0.read_op_ctx_map.clone());
         if self.0.pkt_checker_thread.set(pkt_checker_thread).is_err() {
             panic!("pkt_checker_thread has been set");
         }

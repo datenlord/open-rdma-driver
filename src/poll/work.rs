@@ -12,10 +12,26 @@ use crate::{
     },
     qp::QpContext,
     responser::{RespCommand, RespReadRespCommand},
-    types::{Key, Qpn},
-    RecvPktMap,
+    types::{Key, Qpn, Psn},
+    RecvPktMap, op_ctx::WriteOpCtx,
 };
 
+// TODO: currently we don't have MSN, so we use qpn+psn as index.
+
+
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
+pub(crate) struct QpnWithLastPsn {
+    qpn : Qpn,
+    psn : Psn,
+}
+
+impl QpnWithLastPsn {
+    pub fn new(qpn: Qpn, psn: Psn) -> Self {
+        Self { qpn,psn }
+    }
+}
+
+// TODO: currently we don't have MSN, so we use qpn+rkey as index.
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub(crate) struct RKeyWithQpn {
     key: Key,
@@ -37,6 +53,7 @@ pub(crate) struct WorkDescPollerContext {
     recv_pkt_map: Arc<RwLock<HashMap<RKeyWithQpn, Mutex<RecvPktMap>>>>,
     qp_table: Arc<RwLock<HashMap<Qpn, QpContext>>>,
     sending_queue: std::sync::mpsc::Sender<RespCommand>,
+    write_op_ctx_map : Arc<RwLock<HashMap<QpnWithLastPsn,WriteOpCtx>>>
 }
 
 unsafe impl Send for WorkDescPollerContext {}
@@ -52,12 +69,14 @@ impl WorkDescPoller {
         recv_pkt_map: Arc<RwLock<HashMap<RKeyWithQpn, Mutex<RecvPktMap>>>>,
         qp_table: Arc<RwLock<HashMap<Qpn, QpContext>>>,
         sending_queue: std::sync::mpsc::Sender<RespCommand>,
+        write_op_ctx_map : Arc<RwLock<HashMap<QpnWithLastPsn,WriteOpCtx>>>
     ) -> Self {
         let ctx = WorkDescPollerContext {
             work_rb,
             recv_pkt_map,
             qp_table,
             sending_queue,
+            write_op_ctx_map
         };
         let thread = std::thread::spawn(move || WorkDescPollerContext::poll_working_thread(ctx));
 
@@ -155,8 +174,15 @@ impl WorkDescPollerContext {
         todo!()
     }
 
-    fn handle_work_desc_ack(&self, _desc: ToHostWorkRbDescAck) -> ThreadFlag {
+    fn handle_work_desc_ack(&self, desc: ToHostWorkRbDescAck) -> ThreadFlag {
         eprintln!("in handle_work_desc_ack");
+        let guard = self.write_op_ctx_map.read().unwrap();
+        let key = QpnWithLastPsn::new(desc.common.dqpn, desc.psn);
+        if let Some(op_ctx) = guard.get(&key) {
+            op_ctx.set_result(());
+        } else {
+            eprintln!("receive ack, but op_ctx not found for {:?}", key);
+        }
 
         // TODO: since we don't have MSN yet, we don't have enough information to clear
         ThreadFlag::Running
@@ -180,15 +206,15 @@ mod tests {
         device::{
             ToHostRb, ToHostWorkRbDesc, ToHostWorkRbDescCommon, ToHostWorkRbDescRead,
             ToHostWorkRbDescStatus, ToHostWorkRbDescTransType, ToHostWorkRbDescWrite,
-            ToHostWorkRbDescWriteType,
+            ToHostWorkRbDescWriteType, ToHostWorkRbDescAck,
         },
         qp::QpContext,
         responser::RespCommand,
-        types::{Key, MemAccessTypeFlag, Psn, Qpn},
-        Pd,
+        types::{Key, MemAccessTypeFlag, Psn, Qpn, Msn},
+        Pd, op_ctx::WriteOpCtx,
     };
 
-    use super::WorkDescPoller;
+    use super::{WorkDescPoller, QpnWithLastPsn};
 
     struct MockToHostRb {
         rb: Mutex<Vec<ToHostWorkRbDesc>>,
@@ -266,6 +292,17 @@ mod tests {
                 raddr: 0,
                 rkey: Key::new(0),
             }),
+            ToHostWorkRbDesc::Ack(ToHostWorkRbDescAck {
+                common: ToHostWorkRbDescCommon {
+                    dqpn: Qpn::new(3),
+                    status: ToHostWorkRbDescStatus::Normal,
+                    trans: ToHostWorkRbDescTransType::Rc,
+                    pad_cnt: 0,
+                },
+                value: 0,
+                msn: Msn::default(),
+                psn: Psn::new(2),
+            }),
         ];
         input.reverse();
 
@@ -290,9 +327,12 @@ mod tests {
             },
         );
         let (sending_queue, recv_queue) = std::sync::mpsc::channel::<RespCommand>();
-
-        let _poller = WorkDescPoller::new(work_rb, recv_pkt_map, qp_table, sending_queue);
-        sleep(std::time::Duration::from_millis(10));
+        let write_op_ctx_map = Arc::new(RwLock::new(HashMap::new()));
+        let key = QpnWithLastPsn::new(Qpn::new(3), Psn::new(2));
+        let ctx = WriteOpCtx::new_running();
+        write_op_ctx_map.write().unwrap().insert(key,ctx.clone());
+        let _poller = WorkDescPoller::new(work_rb, recv_pkt_map, qp_table, sending_queue,write_op_ctx_map);
+        ctx.wait();
         let item = recv_queue.recv().unwrap();
         match item {
             RespCommand::ReadResponse(res) => {
@@ -304,5 +344,6 @@ mod tests {
             }
             _ => panic!("unexpected item"),
         }
+        
     }
 }

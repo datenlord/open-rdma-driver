@@ -29,7 +29,7 @@ pub struct OpCtxInner<Payload> {
 
 pub type CtrlOpCtx = OpCtx<bool>; // `is_sucess`
 pub type WriteOpCtx = OpCtx<()>;
-pub type ReadOpCtx = OpCtx<()>;
+pub type ReadOpCtx = OpCtx<()>; 
 
 impl<Payload> OpCtx<Payload> {
     pub fn new_running() -> Self {

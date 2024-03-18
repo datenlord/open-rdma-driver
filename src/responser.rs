@@ -7,8 +7,8 @@ use lockfree::queue::Queue;
 
 use crate::qp::QpContext;
 use crate::types::{Key, MemAccessTypeFlag, Msn, Psn, QpType, Qpn};
-use crate::Sge;
 use crate::utils::calculate_packet_cnt;
+use crate::Sge;
 use crate::{
     device::{
         ToCardWorkRbDescBuilder, ToCardWorkRbDescCommon, ToHostWorkRbDescAethCode,
@@ -26,22 +26,25 @@ pub trait WorkDescriptorSender: Send + Sync {
 pub(crate) struct RespAckCommand {
     pub(crate) dpqn: Qpn,
     pub(crate) msn: Msn,
+    pub(crate) psn: Psn,
     pub(crate) last_retry_psn: Option<Psn>,
 }
 
-impl RespAckCommand{
-    pub(crate) fn new_ack(dpqn: Qpn, msn: Msn) -> Self {
+impl RespAckCommand {
+    pub(crate) fn new_ack(dpqn: Qpn, msn: Msn, last_psn: Psn) -> Self {
         Self {
             dpqn,
             msn,
+            psn: last_psn,
             last_retry_psn: None,
         }
     }
 
-    pub(crate) fn new_nack(dpqn: Qpn, msn: Msn, last_retry_psn: Psn) -> Self {
+    pub(crate) fn new_nack(dpqn: Qpn, msn: Msn, psn: Psn, last_retry_psn: Psn) -> Self {
         Self {
             dpqn,
             msn,
+            psn,
             last_retry_psn: Some(last_retry_psn),
         }
     }
@@ -115,9 +118,15 @@ impl DescResponser {
                     };
 
                     let last_retry_psn = ack.last_retry_psn;
-                    if let Err(e) =
-                        write_packet(ack_buf, src_ip, dst_ip, ack.dpqn, ack.msn, last_retry_psn)
-                    {
+                    if let Err(e) = write_packet(
+                        ack_buf,
+                        src_ip,
+                        dst_ip,
+                        ack.dpqn,
+                        ack.msn,
+                        ack.psn,
+                        last_retry_psn,
+                    ) {
                         eprintln!("Failed to write ack/nack packet: {:?}", e);
                         continue;
                     }
@@ -133,7 +142,7 @@ impl DescResponser {
                 Ok(RespCommand::ReadResponse(resp)) => {
                     // send read response to device
                     let dpqn = resp.desc.common.dqpn;
-                    let common= match qp_table.read().unwrap().get(&dpqn) {
+                    let common = match qp_table.read().unwrap().get(&dpqn) {
                         Some(qp) => {
                             let mut common = ToCardWorkRbDescCommon {
                                 total_len: resp.desc.len,
@@ -149,7 +158,11 @@ impl DescResponser {
                             };
                             let send_psn = &mut qp.inner.lock().unwrap().send_psn;
                             common.psn = *send_psn;
-                            let packet_cnt = calculate_packet_cnt(qp.pmtu.clone(), resp.desc.raddr, resp.desc.len);
+                            let packet_cnt = calculate_packet_cnt(
+                                qp.pmtu.clone(),
+                                resp.desc.raddr,
+                                resp.desc.len,
+                            );
                             *send_psn = send_psn.wrapping_add(packet_cnt);
                             common
                         }
@@ -248,7 +261,9 @@ impl AcknowledgeBuffer {
         let end = start.wrapping_add(self.length);
         let buf_start = buf.as_ptr();
         let buf_end = buf_start.wrapping_add(AcknowledgeBuffer::ACKNOWLEDGE_BUFFER_SLOT_SIZE);
-        assert!(buf_start >= start && buf_end <= end && buf.len() == Self::ACKNOWLEDGE_BUFFER_SLOT_SIZE);
+        assert!(
+            buf_start >= start && buf_end <= end && buf.len() == Self::ACKNOWLEDGE_BUFFER_SLOT_SIZE
+        );
         self.free_list.push(Some(buf));
     }
 
@@ -327,6 +342,7 @@ fn write_packet(
     dst_addr: Ipv4Addr,
     dpqn: Qpn,
     msn: Msn,
+    psn: Psn,
     last_retry_psn: Option<Psn>,
 ) -> Result<(), Error> {
     // write a ip header
@@ -362,7 +378,7 @@ fn write_packet(
     bth_header.set_ecn_and_resv6(0);
 
     bth_header.set_dqpn(dpqn.into_be());
-    bth_header.set_psn(0);
+    bth_header.set_psn(psn.into_be());
 
     let is_nak = last_retry_psn.is_some();
 
@@ -467,8 +483,8 @@ mod tests {
 
     use crate::{
         device::{ToCardWorkRbDescBuilder, ToHostWorkRbDescCommon, ToHostWorkRbDescRead},
-        responser::{calculate_ipv4_checksum, ACKPACKET_SIZE},
         qp::QpContext,
+        responser::{calculate_ipv4_checksum, ACKPACKET_SIZE},
         types::{Key, MemAccessTypeFlag, Msn, Pmtu, Psn, Qpn},
     };
 
@@ -501,7 +517,10 @@ mod tests {
             super::AcknowledgeBuffer::new(buffer.as_ptr() as usize, BUFFER_SIZE, Key::new(0x1000));
         struct Dummy(Mutex<Vec<ToCardWorkRbDescBuilder>>);
         impl super::WorkDescriptorSender for Dummy {
-            fn send_work_desc(&self, desc_builder: ToCardWorkRbDescBuilder) -> Result<(), crate::Error> {
+            fn send_work_desc(
+                &self,
+                desc_builder: ToCardWorkRbDescBuilder,
+            ) -> Result<(), crate::Error> {
                 self.0.lock().unwrap().push(desc_builder);
                 Ok(())
             }
@@ -531,6 +550,7 @@ mod tests {
             .send(super::RespCommand::Acknowledge(super::RespAckCommand {
                 dpqn: Qpn::new(3),
                 msn: Msn::new(0),
+                psn: Psn::new(0),
                 last_retry_psn: None,
             }))
             .unwrap();
@@ -538,6 +558,7 @@ mod tests {
             .send(super::RespCommand::Acknowledge(super::RespAckCommand {
                 dpqn: Qpn::new(3),
                 msn: Msn::new(0),
+                psn: Psn::new(0),
                 last_retry_psn: Option::Some(Psn::new(12)),
             }))
             .unwrap();
