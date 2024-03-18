@@ -1,10 +1,8 @@
-use std::{mem, sync::Arc};
+use std::mem;
 
-use crate::types::Psn;
-
+use crate::types::{Psn, Qpn};
 
 pub(crate) struct RecvPktMap {
-    pkt_cnt: usize,
     start_psn: Psn,
     stage_0: Box<[u64]>,
     stage_0_last_chunk: u64,
@@ -14,13 +12,14 @@ pub(crate) struct RecvPktMap {
     stage_2_last_chunk: u64,
     last_psn: Psn,
     is_out_of_order: bool,
+    dqpn: Qpn,
 }
 
 impl RecvPktMap {
     const FULL_CHUNK_DIV_BIT_SHIFT_CNT: u32 = 64usize.ilog2();
     const LAST_CHUNK_MOD_MASK: usize = mem::size_of::<u64>() * 8 - 1;
 
-    pub(crate) fn new(pkt_cnt: usize, start_psn: Psn) -> Self {
+    pub(crate) fn new(pkt_cnt: usize, start_psn: Psn, dqpn: Qpn) -> Self {
         let create_stage = |len| {
             // used-bit count in the last u64, len % 64
             let rem = len & Self::LAST_CHUNK_MOD_MASK;
@@ -37,7 +36,6 @@ impl RecvPktMap {
         let (stage_2, stage_2_last_chunk) = create_stage(stage_1.len());
 
         Self {
-            pkt_cnt,
             start_psn,
             stage_0,
             stage_0_last_chunk,
@@ -47,6 +45,7 @@ impl RecvPktMap {
             stage_2_last_chunk,
             last_psn: start_psn.wrapping_sub(1),
             is_out_of_order: false,
+            dqpn,
         }
     }
 
@@ -76,7 +75,7 @@ impl RecvPktMap {
         let stage_2_rem = stage_1_idx & Self::LAST_CHUNK_MOD_MASK; // bit position in u64
         let stage_2_bit = (is_stage_1_chunk_complete as u64) << stage_2_rem; // bit mask
         self.stage_2[stage_2_idx] |= stage_2_bit; // set bit in stage 2
-        if self.last_psn.wrapping_add(1) != new_psn{
+        if self.last_psn.wrapping_add(1) != new_psn {
             self.is_out_of_order = true;
         }
         self.last_psn = new_psn;
@@ -98,10 +97,8 @@ impl RecvPktMap {
                 acc && is_chunk_complete
             })
     }
-}
 
-// /// Yields PSN ranges of missing packets
-// #[allow(unused)]
-// struct MissingPkt<'a> {
-//     map: &'a RecvPktMap,
-// }
+    pub(crate) fn get_dqpn(&self) -> Qpn {
+        self.dqpn
+    }
+}

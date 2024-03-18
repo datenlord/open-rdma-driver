@@ -29,6 +29,24 @@ pub(crate) struct RespAckCommand {
     pub(crate) last_retry_psn: Option<Psn>,
 }
 
+impl RespAckCommand{
+    pub(crate) fn new_ack(dpqn: Qpn, msn: Msn) -> Self {
+        Self {
+            dpqn,
+            msn,
+            last_retry_psn: None,
+        }
+    }
+
+    pub(crate) fn new_nack(dpqn: Qpn, msn: Msn, last_retry_psn: Psn) -> Self {
+        Self {
+            dpqn,
+            msn,
+            last_retry_psn: Some(last_retry_psn),
+        }
+    }
+}
+
 /// Command about read response
 pub(crate) struct RespReadRespCommand {
     pub(crate) desc: ToHostWorkRbDescRead,

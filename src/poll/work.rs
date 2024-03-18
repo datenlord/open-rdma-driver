@@ -133,7 +133,11 @@ impl WorkDescPollerContext {
             let pkt_cnt = 1 + (real_payload_len - first_pkt_len as u32).div_ceil(pmtu);
             recv_pkt_map_guard.insert(
                 fake_msn.clone(),
-                Mutex::new(RecvPktMap::new(pkt_cnt as usize, desc.psn)),
+                Mutex::new(RecvPktMap::new(
+                    pkt_cnt as usize,
+                    desc.psn,
+                    desc.common.dqpn,
+                )),
             );
         }
 
@@ -197,7 +201,7 @@ mod tests {
     impl ToHostRb<ToHostWorkRbDesc> for MockToHostRb {
         fn pop(&self) -> ToHostWorkRbDesc {
             let is_empty = self.rb.lock().unwrap().is_empty();
-            if is_empty{
+            if is_empty {
                 sleep(std::time::Duration::from_secs(10))
             }
             self.rb.lock().unwrap().pop().unwrap()
@@ -287,7 +291,7 @@ mod tests {
         );
         let (sending_queue, recv_queue) = std::sync::mpsc::channel::<RespCommand>();
 
-        let poller = WorkDescPoller::new(work_rb, recv_pkt_map, qp_table, sending_queue);
+        let _poller = WorkDescPoller::new(work_rb, recv_pkt_map, qp_table, sending_queue);
         sleep(std::time::Duration::from_millis(10));
         let item = recv_queue.recv().unwrap();
         match item {
@@ -300,6 +304,5 @@ mod tests {
             }
             _ => panic!("unexpected item"),
         }
-
     }
 }

@@ -179,7 +179,7 @@ impl ToCardRb<ToCardWorkRbDesc> for EmulatedDevice {
         let desc_cnt = desc.serialized_desc_cnt();
         // TODO: the card might not be able to handle "part of the desc"
         // So me might need to ensure we have enough space to write the whole desc before writing
-        let mut guard = self.to_card_work_rb.lock().unwrap();;
+        let mut guard = self.to_card_work_rb.lock().unwrap();
         let mut writer = guard.write();
         desc.write_0(writer.next().unwrap());
         desc.write_1(writer.next().unwrap());
@@ -196,7 +196,7 @@ impl ToCardRb<ToCardWorkRbDesc> for EmulatedDevice {
 // TODO: refactor the mechanism to handle ringbuf. It's a kind of complex
 impl ToHostRb<ToHostWorkRbDesc> for EmulatedDevice {
     fn pop(&self) -> ToHostWorkRbDesc {
-        let mut guard = self.to_host_work_rb.lock().unwrap();;
+        let mut guard = self.to_host_work_rb.lock().unwrap();
         let mut reader = guard.read();
 
         let mem = reader.next().unwrap();
