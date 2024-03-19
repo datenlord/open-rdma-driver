@@ -133,7 +133,7 @@ fn main() {
         len: SEND_CNT as u32 - 3,
         key: mr_a.get_key(),
     };
-    dev_a
+    let ctx = dev_a
         .write(
             qp_a.get_qpn(),
             &mr_buffer_b[65537] as *const u8 as u64,
@@ -145,7 +145,7 @@ fn main() {
             Some(sge3),
         )
         .unwrap();
-
+    ctx.wait();
     eprintln!("Write req sent");
 
     // assert!(mr_buffer[0..32767] == mr_buffer[65537..65537 + 32767]);
@@ -176,7 +176,7 @@ fn main() {
         key: mr_a.get_key(),
     };
 
-    dev_a
+    let ctx = dev_a
         .read(
             qp_a.get_qpn(),
             &mr_buffer_b[65537] as *const u8 as u64,
@@ -185,7 +185,7 @@ fn main() {
             sge_read,
         )
         .unwrap();
-
+    ctx.wait();
     eprintln!("Read req sent");
 
     // assert!(mr_buffer[0..0 + 32767] == mr_buffer[128 * 1024..128 * 1024 + 32767]);

@@ -1,5 +1,5 @@
 use std::{
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, OnceLock},
     thread::{self, Thread},
 };
 
@@ -17,32 +17,40 @@ pub enum CtxStatus {
     Finished,
 }
 
-#[derive(Debug, Clone)]
-pub struct OpCtx<Payload>(Arc<Mutex<OpCtxInner<Payload>>>);
+#[derive(Debug,Clone)]
+pub struct OpCtx<Payload>(Arc<OpCtxWrapper<Payload>>);
 
 #[derive(Debug)]
-pub struct OpCtxInner<Payload> {
+struct OpCtxWrapper<Payload> {
+    inner: Mutex<OpCtxInner>,
+    payload: OnceLock<Payload>,
+}
+
+#[derive(Debug)]
+struct OpCtxInner {
     thread: Option<Thread>,
     status: CtxStatus,
-    payload: Option<Payload>,
 }
 
 pub type CtrlOpCtx = OpCtx<bool>; // `is_sucess`
 pub type WriteOpCtx = OpCtx<()>;
-pub type ReadOpCtx = OpCtx<()>; 
+pub type ReadOpCtx = OpCtx<()>;
 
 impl<Payload> OpCtx<Payload> {
     pub fn new_running() -> Self {
         let inner = OpCtxInner {
             thread: None,
             status: CtxStatus::Running,
-            payload: None,
         };
-        Self(Arc::new(Mutex::new(inner)))
+        let wrapper = OpCtxWrapper {
+            inner: Mutex::new(inner),
+            payload: OnceLock::new(),
+        };
+        Self(Arc::new(wrapper))
     }
 
     pub fn wait(&self) {
-        let mut guard = self.0.lock().unwrap();
+        let mut guard = self.0.inner.lock().unwrap();
         if matches!(guard.status, CtxStatus::Running) {
             guard.thread = Some(thread::current());
             drop(guard);
@@ -51,8 +59,12 @@ impl<Payload> OpCtx<Payload> {
     }
 
     pub(crate) fn set_result(&self, result: Payload) {
-        let mut guard = self.0.lock().unwrap();
-        guard.payload = Some(result);
+        if let Err(_) = self.0.payload.set(result) {
+            eprintln!("set_result failed");
+            return;
+        }
+        // set only once
+        let mut guard = self.0.inner.lock().unwrap();
         guard.status = CtxStatus::Finished;
         if let Some(thread) = guard.thread.take() {
             thread.unpark();
@@ -60,26 +72,22 @@ impl<Payload> OpCtx<Payload> {
     }
 
     pub fn get_status(&self) -> CtxStatus {
-        self.0.lock().unwrap().status.clone()
+        self.0.inner.lock().unwrap().status.clone()
     }
-}
 
-impl<Payload: Clone> OpCtx<Payload> {
-    pub fn wait_result(&self) -> Option<Payload>{
+    pub fn get_result(&self) -> Option<&Payload> {
+        self.0.payload.get()
+    }
+
+    pub fn wait_result(&self) -> Option<&Payload> {
         self.wait();
-        let guard = self.0.lock().unwrap();
-        guard.payload.clone()
-    }
-    
-    pub fn get_result(&self) -> Option<Payload> {
-        let guard = self.0.lock().unwrap();
-        guard.payload.clone()
+        self.0.payload.get()
     }
 }
-
 
 #[cfg(test)]
-mod tests{
+mod tests {
+
     #[test]
     fn test_op_ctx() {
         let ctx = super::OpCtx::new_running();
@@ -89,7 +97,7 @@ mod tests{
             ctx_clone.set_result(true);
         });
         ctx.wait();
-        assert_eq!(ctx.get_result(), Some(true));
+        assert_eq!(ctx.get_result(), Some(true).as_ref());
 
         let ctx = super::OpCtx::new_running();
         let ctx_clone = ctx.clone();
@@ -98,6 +106,6 @@ mod tests{
             ctx_clone.set_result(false);
         });
         ctx.wait_result();
-        assert_eq!(ctx.get_result(), Some(false));
+        assert_eq!(ctx.get_result(), Some(false).as_ref());
     }
 }
