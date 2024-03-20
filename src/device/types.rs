@@ -2,6 +2,7 @@
 
 use bitfield::bitfield;
 use bitflags::bitflags;
+use eui48::MacAddress;
 use num_enum::TryFromPrimitive;
 use std::{
     mem::{size_of, size_of_val},
@@ -11,6 +12,7 @@ use std::{
 
 use crate::{
     types::{Key, MemAccessTypeFlag, Msn, Pmtu, Psn, QpType, Qpn},
+    utils::u8_slice_to_u64,
     Error, Sge,
 };
 
@@ -18,12 +20,16 @@ pub(crate) enum ToCardCtrlRbDesc {
     UpdateMrTable(ToCardCtrlRbDescUpdateMrTable),
     UpdatePageTable(ToCardCtrlRbDescUpdatePageTable),
     QpManagement(ToCardCtrlRbDescQpManagement),
+    SetNetworkParam(ToCardCtrlRbDescSetNetworkParam),
+    SetRawPacketReceiveMeta(ToCardCtrlRbDescSetRawPacketReceiveMeta),
 }
 
 pub(crate) enum ToHostCtrlRbDesc {
     UpdateMrTable(ToHostCtrlRbDescUpdateMrTable),
     UpdatePageTable(ToHostCtrlRbDescUpdatePageTable),
     QpManagement(ToHostCtrlRbDescQpManagement),
+    SetNetworkParam(ToHostCtrlRbDescSetNetworkParam),
+    SetRawPacketReceiveMeta(ToHostCtrlRbDescSetRawPacketReceiveMeta),
 }
 
 #[derive(Clone)]
@@ -86,6 +92,20 @@ pub(crate) struct ToCardCtrlRbDescQpManagement {
     pub(crate) pmtu: Pmtu,
 }
 
+pub(crate) struct ToCardCtrlRbDescSetNetworkParam {
+    pub(crate) common: ToCardCtrlRbDescCommon,
+    pub(crate) gateway: Ipv4Addr,
+    pub(crate) netmask: Ipv4Addr,
+    pub(crate) ipaddr: Ipv4Addr,
+    pub(crate) macaddr: MacAddress,
+}
+
+pub(crate) struct ToCardCtrlRbDescSetRawPacketReceiveMeta {
+    pub(crate) common: ToCardCtrlRbDescCommon,
+    pub(crate) base_write_addr: u64,
+    pub(crate) key: Key,
+}
+
 pub(crate) struct ToHostCtrlRbDescCommon {
     pub(crate) op_id: u32, // user_data
     pub(crate) is_success: bool,
@@ -103,7 +123,15 @@ pub(crate) struct ToHostCtrlRbDescQpManagement {
     pub(crate) common: ToHostCtrlRbDescCommon,
 }
 
-#[derive(Clone, Debug)]
+pub(crate) struct ToHostCtrlRbDescSetNetworkParam {
+    pub(crate) common: ToHostCtrlRbDescCommon,
+}
+
+pub(crate) struct ToHostCtrlRbDescSetRawPacketReceiveMeta {
+    pub(crate) common: ToHostCtrlRbDescCommon,
+}
+
+#[derive(Clone)]
 pub(crate) struct ToCardWorkRbDescCommon {
     pub(crate) total_len: u32,
     pub(crate) raddr: u64,
@@ -248,6 +276,8 @@ enum CtrlRbDescOpcode {
     UpdateMrTable = 0x00,
     UpdatePageTable = 0x01,
     QpManagement = 0x02,
+    SetNetworkParam = 0x03,
+    SetRawPacketReceiveMeta = 0x04,
 }
 
 #[derive(Clone)]
@@ -409,6 +439,23 @@ impl ToCardCtrlRbDesc {
             seg0.set_pmtu(desc.pmtu.clone() as u64);
         }
 
+        fn write_set_network_param(dst: &mut [u8], desc: &ToCardCtrlRbDescSetNetworkParam) {
+            let mut network_params = CmdQueueReqDescSetNetworkParam(dst);
+            network_params.set_eth_mac_addr(u8_slice_to_u64(desc.macaddr.as_bytes()));
+            network_params.set_ip_addr(u8_slice_to_u64(&desc.ipaddr.octets()));
+            network_params.set_ip_gateway(u8_slice_to_u64(&desc.gateway.octets()));
+            network_params.set_ip_netmask(u8_slice_to_u64(&desc.netmask.octets()));
+        }
+
+        fn write_set_raw_packet_receive_meta(
+            dst: &mut [u8],
+            desc: &ToCardCtrlRbDescSetRawPacketReceiveMeta,
+        ) {
+            let mut raw_packet_recv_meta = CmdQueueReqDescSetRawPacketReceiveMeta(dst);
+            raw_packet_recv_meta.set_write_base_addr(desc.base_write_addr);
+            raw_packet_recv_meta.set_write_mr_key(desc.key.get() as u64);
+        }
+
         match self {
             ToCardCtrlRbDesc::UpdateMrTable(desc) => {
                 write_common_header(dst, CtrlRbDescOpcode::UpdateMrTable, desc.common.op_id);
@@ -421,6 +468,18 @@ impl ToCardCtrlRbDesc {
             ToCardCtrlRbDesc::QpManagement(desc) => {
                 write_common_header(dst, CtrlRbDescOpcode::QpManagement, desc.common.op_id);
                 write_qp_management(dst, desc);
+            }
+            ToCardCtrlRbDesc::SetNetworkParam(desc) => {
+                write_common_header(dst, CtrlRbDescOpcode::SetNetworkParam, desc.common.op_id);
+                write_set_network_param(dst, desc);
+            }
+            ToCardCtrlRbDesc::SetRawPacketReceiveMeta(desc) => {
+                write_common_header(
+                    dst,
+                    CtrlRbDescOpcode::SetRawPacketReceiveMeta,
+                    desc.common.op_id,
+                );
+                write_set_raw_packet_receive_meta(dst, desc);
             }
         }
     }
@@ -463,6 +522,14 @@ impl ToHostCtrlRbDesc {
             }
             CtrlRbDescOpcode::QpManagement => {
                 ToHostCtrlRbDesc::QpManagement(ToHostCtrlRbDescQpManagement { common })
+            }
+            CtrlRbDescOpcode::SetNetworkParam => {
+                ToHostCtrlRbDesc::SetNetworkParam(ToHostCtrlRbDescSetNetworkParam { common })
+            }
+            CtrlRbDescOpcode::SetRawPacketReceiveMeta => {
+                ToHostCtrlRbDesc::SetRawPacketReceiveMeta(ToHostCtrlRbDescSetRawPacketReceiveMeta {
+                    common,
+                })
             }
         }
     }
@@ -590,15 +657,8 @@ impl ToCardWorkRbDesc {
         desc_common.set_seg_cnt(sge_cnt.into());
         desc_common.set_psn(common.psn.get().into());
         let mac = &common.mac_addr;
-        desc_common.0[8..14].copy_from_slice(&[
-            mac[0],
-            mac[1],
-            mac[2],
-            mac[3],
-            mac[4],
-            mac[5],
-        ]);
-      
+        desc_common.0[8..14].copy_from_slice(&[mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]]);
+
         desc_common.set_dqpn(common.dqpn.get().into());
 
         if let ToCardWorkRbDesc::WriteWithImm(desc) = self {
@@ -1004,6 +1064,28 @@ bitfield! {
     get_pmtu, set_pmtu: 147, 145;                                               // 3bits
     _reserverd2, _: 151, 148;                                                   // 5bits
     _reserverd1, _: 255, 152;                                                   // 104bits
+}
+
+bitfield! {
+    struct CmdQueueReqDescSetNetworkParam([u8]);
+    u64;
+    _cmd_queue_desc_common_head,_:          63 ,   0;                                       // 64bits
+    get_ip_gateway, set_ip_gateway:         95 ,  64;                                       // 32bits
+    get_ip_netmask, set_ip_netmask:         127,  96;                                       // 32bit
+    get_ip_addr, set_ip_addr:               159, 128;                                       // 32bit
+    _reserverd1, _:                         191, 160;                                       // 32bit
+    get_eth_mac_addr, set_eth_mac_addr:     239, 192;                                       // 48bit
+    _reserverd2, _:                         255, 240;                                       // 16bit
+}
+
+bitfield! {
+    struct CmdQueueReqDescSetRawPacketReceiveMeta([u8]);
+    u64;
+    _cmd_queue_desc_common_head,_:              63 ,   0;                                   // 64bits
+    get_write_base_addr, set_write_base_addr:   127,  64;                                   // 64bits
+    get_write_mr_key, set_write_mr_key:         159, 128;                                   // 32bits
+    _reserverd1, _:                             191, 160;                                   // 32bits
+    _reserverd2, _:                             255, 240;                                   // 64bits
 }
 
 bitfield! {

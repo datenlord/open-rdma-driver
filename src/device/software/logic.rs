@@ -343,6 +343,8 @@ impl BlueRDMALogic {
             }
             // Userspace types use virtual address directly
             ToCardCtrlRbDesc::UpdatePageTable(_desc) => unimplemented!(),
+            ToCardCtrlRbDesc::SetNetworkParam(_desc) => unimplemented!(),
+            ToCardCtrlRbDesc::SetRawPacketReceiveMeta(_desc) => unimplemented!(),
         }
     }
 

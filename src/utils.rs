@@ -17,6 +17,10 @@ pub(crate) fn calculate_packet_cnt(pmtu: Pmtu, raddr: u64, total_len: u32) -> u3
     1 + (total_len - first_pkt_len).div_ceil(u64::from(&pmtu) as u32)
 }
 
+pub(crate) fn u8_slice_to_u64(slice: &[u8]) -> u64 {
+    slice.iter().fold(0, |a, b| (a << 8) + *b as u64)
+}
+
 #[cfg(test)]
 mod tests {
     use crate::types::Pmtu;
