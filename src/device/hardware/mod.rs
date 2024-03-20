@@ -2,6 +2,7 @@ use super::{
     DeviceAdaptor, Overflowed, ToCardCtrlRbDesc, ToCardRb, ToCardWorkRbDesc, ToHostCtrlRbDesc,
     ToHostRb, ToHostWorkRbDesc,
 };
+use std::{error::Error, sync::Arc};
 
 pub(crate) struct HardwareDevice {
     to_card_ctrl_rb: ToCardCtrlRb,
@@ -10,37 +11,42 @@ pub(crate) struct HardwareDevice {
     to_host_work_rb: ToHostWorkRb,
 }
 
+#[derive(Clone)]
 struct ToCardCtrlRb;
+#[derive(Clone)]
 struct ToHostCtrlRb;
+#[derive(Clone)]
 struct ToCardWorkRb;
+#[derive(Clone)]
 struct ToHostWorkRb;
 
 impl HardwareDevice {
-    pub(crate) fn init() -> Self {
-        Self {
+    pub(crate) fn init() -> Result<Self, Box<dyn Error>> {
+        Ok(Self {
             to_card_ctrl_rb: ToCardCtrlRb,
             to_host_ctrl_rb: ToHostCtrlRb,
             to_card_work_rb: ToCardWorkRb,
             to_host_work_rb: ToHostWorkRb,
-        }
+        })
     }
 }
 
+
 impl DeviceAdaptor for HardwareDevice {
-    fn to_card_ctrl_rb(&self) -> &dyn ToCardRb<ToCardCtrlRbDesc> {
-        &self.to_card_ctrl_rb
+    fn to_card_ctrl_rb(&self) -> Arc<dyn ToCardRb<ToCardCtrlRbDesc>> {
+        Arc::new(self.to_card_ctrl_rb.clone())
     }
 
-    fn to_host_ctrl_rb(&self) -> &dyn ToHostRb<ToHostCtrlRbDesc> {
-        &self.to_host_ctrl_rb
+    fn to_host_ctrl_rb(&self) -> Arc<dyn ToHostRb<ToHostCtrlRbDesc>> {
+        Arc::new(self.to_host_ctrl_rb.clone())
     }
 
-    fn to_card_work_rb(&self) -> &dyn ToCardRb<ToCardWorkRbDesc> {
-        &self.to_card_work_rb
+    fn to_card_work_rb(&self) -> Arc<dyn ToCardRb<ToCardWorkRbDesc>> {
+        Arc::new(self.to_card_work_rb.clone())
     }
 
-    fn to_host_work_rb(&self) -> &dyn ToHostRb<ToHostWorkRbDesc> {
-        &self.to_host_work_rb
+    fn to_host_work_rb(&self) -> Arc<dyn ToHostRb<ToHostWorkRbDesc>> {
+        Arc::new(self.to_host_work_rb.clone())
     }
 
     fn read_csr(&self, _addr: usize) -> u32 {
@@ -49,6 +55,10 @@ impl DeviceAdaptor for HardwareDevice {
 
     fn write_csr(&self, _addr: usize, _data: u32) {
         todo!()
+    }
+
+    fn get_phys_addr(&self, virt_addr: usize) -> usize {
+        virt_addr
     }
 }
 
