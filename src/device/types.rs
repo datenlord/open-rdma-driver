@@ -1040,13 +1040,13 @@ bitfield! {
     _reserved6 , _: 23, 20;               // 4bits
     get_seg_cnt, set_seg_cnt: 26, 24;     // 3bits
     _reserved5 , _: 31, 27;               // 5bits
-    get_psn, set_psn: 63, 32;             // 32bits
-    _reserved4 , _: 71, 64;               // 8bits
-    get_mac_addr, set_mac_addr: 119, 72;  // 48bits
-    _reserved3 , _: 135, 120;             // 16bits
-    get_dqpn, set_dqpn: 159, 136;         // 24bits
-    _reserved2 , _: 167, 160;             // 8bits
-    get_imm, set_imm: 191, 168;           // 32bits
+    get_psn, set_psn: 55, 32;             // 24bits
+    _reserved4 , _: 63, 56;               // 8bits
+    get_mac_addr, set_mac_addr: 111, 64;  // 48bits
+    _reserved3 , _: 127, 112;             // 16bits
+    get_dqpn, set_dqpn: 151, 128;         // 24bits
+    _reserved2 , _: 159, 152;             // 8bits
+    get_imm, set_imm: 191, 160;           // 32bits
     _reserved1 , _: 255, 192;             // 64bits
 }
 
