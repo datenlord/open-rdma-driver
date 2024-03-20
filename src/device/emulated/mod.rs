@@ -155,6 +155,7 @@ impl DeviceAdaptor for Arc<EmulatedDevice> {
 
 impl ToCardRb<ToCardCtrlRbDesc> for EmulatedDevice {
     fn push(&self, desc: ToCardCtrlRbDesc) -> Result<(), Overflowed> {
+        eprintln!("ctrl push");
         let mut guard = self.to_card_ctrl_rb.lock().unwrap();
         let mut writer = guard.write();
 
@@ -167,6 +168,7 @@ impl ToCardRb<ToCardCtrlRbDesc> for EmulatedDevice {
 
 impl ToHostRb<ToHostCtrlRbDesc> for EmulatedDevice {
     fn pop(&self) -> ToHostCtrlRbDesc {
+        eprintln!("ToHostRb ctrl pop");
         let mut guard = self.to_host_ctrl_rb.lock().unwrap();
         let mut reader = guard.read();
         let mem = reader.next().unwrap();
@@ -176,6 +178,7 @@ impl ToHostRb<ToHostCtrlRbDesc> for EmulatedDevice {
 
 impl ToCardRb<ToCardWorkRbDesc> for EmulatedDevice {
     fn push(&self, desc: ToCardWorkRbDesc) -> Result<(), Overflowed> {
+        eprintln!("work push");
         let desc_cnt = desc.serialized_desc_cnt();
         // TODO: the card might not be able to handle "part of the desc"
         // So me might need to ensure we have enough space to write the whole desc before writing
@@ -196,6 +199,7 @@ impl ToCardRb<ToCardWorkRbDesc> for EmulatedDevice {
 // TODO: refactor the mechanism to handle ringbuf. It's a kind of complex
 impl ToHostRb<ToHostWorkRbDesc> for EmulatedDevice {
     fn pop(&self) -> ToHostWorkRbDesc {
+        eprintln!("work pop");
         let mut guard = self.to_host_work_rb.lock().unwrap();
         let mut reader = guard.read();
 

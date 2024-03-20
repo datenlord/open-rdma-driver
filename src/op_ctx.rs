@@ -59,7 +59,7 @@ impl<Payload> OpCtx<Payload> {
     }
 
     pub(crate) fn set_result(&self, result: Payload) {
-        if let Err(_) = self.0.payload.set(result) {
+        if self.0.payload.set(result).is_err() {
             eprintln!("set_result failed");
             return;
         }

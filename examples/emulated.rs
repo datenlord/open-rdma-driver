@@ -32,7 +32,7 @@ fn init_global_allocator() {
         let heap = libc::mmap(
             std::ptr::null_mut::<c_void>(),
             1024 * 1024 * 1024,
-            libc::PROT_EXEC | libc::PROT_READ | libc::PROT_WRITE,
+            libc::PROT_READ | libc::PROT_WRITE,
             libc::MAP_SHARED,
             shm_fd,
             0,
@@ -44,7 +44,7 @@ fn init_global_allocator() {
     }
 }
 
-fn create_and_init_card(card_id: usize, mock_server_addr: &str) -> (Device, Pd, Mr, Qp, Vec<u8>) {
+fn create_and_init_card(card_id: usize, mock_server_addr: &str) -> (Device, Pd, Mr, Qp, Box<[u8]>) {
     let head_start_addr = unsafe { HEAP_START_ADDR };
 
     let dev = Device::new_emulated(mock_server_addr.parse().unwrap(), head_start_addr).unwrap();
@@ -53,7 +53,7 @@ fn create_and_init_card(card_id: usize, mock_server_addr: &str) -> (Device, Pd, 
     let pd = dev.alloc_pd().unwrap();
     eprintln!("[{}] PD allocated", card_id);
 
-    let mut mr_buffer: Vec<u8> = Vec::with_capacity(1024 * 256);
+    let mut mr_buffer = Box::new([0u8;1024 * 256]);
 
     unsafe {
         println!(
@@ -92,7 +92,6 @@ fn create_and_init_card(card_id: usize, mock_server_addr: &str) -> (Device, Pd, 
 
 fn main() {
     const SEND_CNT: usize = 8192 * 4;
-
     let (dev_a, _pd_a, mr_a, qp_a, mut mr_buffer_a) = create_and_init_card(0, "0.0.0.0:9873");
     let (dev_b, _pd_b, mr_b, _qp_b, mut mr_buffer_b) = create_and_init_card(1, "0.0.0.0:9875");
 

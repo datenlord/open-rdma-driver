@@ -10,7 +10,7 @@ use std::{
 };
 
 use crate::{
-    types::{Key, MemAccessTypeFlag, Msn, Psn, Qpn, QpType, Pmtu},
+    types::{Key, MemAccessTypeFlag, Msn, Pmtu, Psn, QpType, Qpn},
     Error, Sge,
 };
 
@@ -44,7 +44,7 @@ pub(crate) enum ToHostWorkRbDesc {
 }
 
 impl ToHostWorkRbDesc {
-    pub(crate) fn common(&self) -> &ToHostWorkRbDescCommon{
+    pub(crate) fn common(&self) -> &ToHostWorkRbDescCommon {
         match self {
             ToHostWorkRbDesc::Read(desc) => &desc.common,
             ToHostWorkRbDesc::Write(desc) => &desc.common,
@@ -72,8 +72,8 @@ pub(crate) struct ToCardCtrlRbDescUpdateMrTable {
 pub(crate) struct ToCardCtrlRbDescUpdatePageTable {
     pub(crate) common: ToCardCtrlRbDescCommon,
     pub(crate) start_addr: u64,
-    pub(crate) pgt_idx: u32,
-    pub(crate) pgte_cnt: u32,
+    pub(crate) pgt_idx: u32,  //offset
+    pub(crate) pgte_cnt: u32, //bytes
 }
 
 pub(crate) struct ToCardCtrlRbDescQpManagement {
@@ -103,7 +103,7 @@ pub(crate) struct ToHostCtrlRbDescQpManagement {
     pub(crate) common: ToHostCtrlRbDescCommon,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) struct ToCardWorkRbDescCommon {
     pub(crate) total_len: u32,
     pub(crate) raddr: u64,
@@ -202,7 +202,7 @@ pub(crate) struct ToCardCtrlRbDescSge {
     pub(crate) key: Key,
 }
 
-#[derive(TryFromPrimitive,Debug)]
+#[derive(TryFromPrimitive, Debug)]
 #[repr(u8)]
 pub(crate) enum ToHostWorkRbDescStatus {
     Normal = 1,
@@ -340,7 +340,7 @@ impl ToCardCtrlRbDesc {
             common.set_is_success_or_need_signal_cplt(false);
             common.set_op_code(opcode as u32);
             common.set_extra_segment_cnt(0);
-            common.set_user_data(op_id.to_be());
+            common.set_user_data(op_id);
         }
 
         fn write_update_mr_table(dst: &mut [u8], desc: &ToCardCtrlRbDescUpdateMrTable) {
@@ -357,13 +357,13 @@ impl ToCardCtrlRbDesc {
 
             // bytes 0-7 are header bytes, ignore them
 
-            let mut update_mr_table = CmdQueueReqDescUpdateMrTable(&mut dst[8..]);
-            update_mr_table.set_mr_base_va(desc.addr.to_be());
-            update_mr_table.set_mr_length(desc.len.to_be().into());
-            update_mr_table.set_mr_key(desc.key.into_be().into());
-            update_mr_table.set_pd_handler(desc.pd_hdl.to_be().into());
+            let mut update_mr_table = CmdQueueReqDescUpdateMrTable(dst);
+            update_mr_table.set_mr_base_va(desc.addr);
+            update_mr_table.set_mr_length(desc.len.into());
+            update_mr_table.set_mr_key(desc.key.get().into());
+            update_mr_table.set_pd_handler(desc.pd_hdl.into());
             update_mr_table.set_acc_flags(desc.acc_flags.bits().into());
-            update_mr_table.set_pgt_offset(desc.pgt_offset.to_be().into());
+            update_mr_table.set_pgt_offset(desc.pgt_offset.into());
         }
 
         fn write_update_page_table(dst: &mut [u8], desc: &ToCardCtrlRbDescUpdatePageTable) {
@@ -377,9 +377,9 @@ impl ToCardCtrlRbDesc {
 
             // bits 0-7 are header bits
             let mut update_pgt = CmdQueueReqDescUpdatePGT(dst);
-            update_pgt.set_dma_addr(desc.start_addr.to_be());
-            update_pgt.set_start_index(desc.pgt_idx.to_be().into());
-            update_pgt.set_dma_read_length((desc.pgte_cnt * 8).to_be().into());
+            update_pgt.set_dma_addr(desc.start_addr);
+            update_pgt.set_start_index(desc.pgt_idx.into());
+            update_pgt.set_dma_read_length((desc.pgte_cnt * 8).into());
         }
 
         fn write_qp_management(dst: &mut [u8], desc: &ToCardCtrlRbDescQpManagement) {
@@ -402,8 +402,8 @@ impl ToCardCtrlRbDesc {
             let mut seg0 = CmdQueueReqDescQpManagementSeg0(dst);
             seg0.set_is_valid(desc.is_valid);
             seg0.set_is_error(false);
-            seg0.set_qpn(desc.qpn.into_be().into());
-            seg0.set_pd_handler(desc.pd_hdl.to_be().into());
+            seg0.set_qpn(desc.qpn.get().into());
+            seg0.set_pd_handler(desc.pd_hdl.into());
             seg0.set_qp_type(desc.qp_type as u64);
             seg0.set_rq_access_flags(desc.rq_acc_flags.bits().into());
             seg0.set_pmtu(desc.pmtu.clone() as u64);
@@ -517,7 +517,7 @@ impl ToCardWorkRbDesc {
 
         let extra_segment_cnt = self.serialized_desc_cnt() - 1;
         head.set_extra_segment_cnt(extra_segment_cnt as u32);
-        head.set_total_len(common.total_len.to_be());
+        head.set_total_len(common.total_len);
 
         // typedef struct {
         //     ReservedZero#(64)           reserved1;        // 64 bits
@@ -527,12 +527,11 @@ impl ToCardWorkRbDesc {
         //     SendQueueDescCommonHead     commonHeader;     // 64 bits
         // } SendQueueReqDescSeg0 deriving(Bits, FShow);
         // let mut seg0 = SendQueueReqDescSeg0(&mut dst[8..]);
-        let dst = &mut head.0[8..32];
+        let dst = &mut head.0;
         let mut head = SendQueueReqDescSeg0(dst);
-        head.set_raddr(common.raddr.to_be());
-        head.set_rkey(common.rkey.into_be().into());
-        let ip : u32 = common.dqp_ip.into();
-        head.set_dqp_ip(ip.to_be().into());
+        head.set_raddr(common.raddr);
+        head.set_rkey(common.rkey.get().into());
+        head.0[20..24].copy_from_slice(&common.dqp_ip.octets());
     }
 
     pub(super) fn write_1(&self, dst: &mut [u8]) {
@@ -589,21 +588,21 @@ impl ToCardWorkRbDesc {
         desc_common.set_flags(common.flags.bits().into());
         desc_common.set_qp_type(common.qp_type as u64);
         desc_common.set_seg_cnt(sge_cnt.into());
-        desc_common.set_psn(common.psn.into_be().into());
-        desc_common.set_mac_addr(u64::from_le_bytes([
-            common.mac_addr[0],
-            common.mac_addr[1],
-            common.mac_addr[2],
-            common.mac_addr[3],
-            common.mac_addr[4],
-            common.mac_addr[5],
-            0,
-            0,
-        ]));
-        desc_common.set_dqpn(common.dqpn.into_be().into());
+        desc_common.set_psn(common.psn.get().into());
+        let mac = &common.mac_addr;
+        desc_common.0[8..14].copy_from_slice(&[
+            mac[0],
+            mac[1],
+            mac[2],
+            mac[3],
+            mac[4],
+            mac[5],
+        ]);
+      
+        desc_common.set_dqpn(common.dqpn.get().into());
 
         if let ToCardWorkRbDesc::WriteWithImm(desc) = self {
-            desc_common.set_imm(desc.imm.to_be() as u64);
+            desc_common.set_imm(desc.imm as u64);
         } else {
             desc_common.set_imm(0);
         }
@@ -629,15 +628,15 @@ impl ToCardWorkRbDesc {
         };
 
         let mut frag_sge = SendQueueReqDescFragSGE(&mut dst[16..32]);
-        frag_sge.set_laddr(sge0.addr.to_be());
-        frag_sge.set_len(sge0.len.to_be().into());
-        frag_sge.set_lkey(sge0.key.into_be().into());
+        frag_sge.set_laddr(sge0.addr);
+        frag_sge.set_len(sge0.len.into());
+        frag_sge.set_lkey(sge0.key.get().into());
 
         let mut frag_sge = SendQueueReqDescFragSGE(&mut dst[0..16]);
         if let Some(sge1) = sge1 {
-            frag_sge.set_laddr(sge1.addr.to_be());
-            frag_sge.set_len(sge1.len.to_be().into());
-            frag_sge.set_lkey(sge1.key.into_be().into());
+            frag_sge.set_laddr(sge1.addr);
+            frag_sge.set_len(sge1.len.into());
+            frag_sge.set_lkey(sge1.key.get().into());
         } else {
             dst[0..16].copy_from_slice(&[0; 16]);
         }
@@ -664,9 +663,9 @@ impl ToCardWorkRbDesc {
 
         let mut frag_sge = SendQueueReqDescFragSGE(&mut dst[0..16]);
         if let Some(sge3) = sge3 {
-            frag_sge.set_lkey(sge3.key.into_be().into());
-            frag_sge.set_len(sge3.len.to_be().into());
-            frag_sge.set_laddr(sge3.addr.to_be());
+            frag_sge.set_lkey(sge3.key.get().into());
+            frag_sge.set_len(sge3.len.into());
+            frag_sge.set_laddr(sge3.addr);
         } else {
             frag_sge.set_lkey(0);
             frag_sge.set_len(0);
@@ -675,9 +674,9 @@ impl ToCardWorkRbDesc {
 
         let mut frag_sge = SendQueueReqDescFragSGE(&mut dst[16..32]);
         if let Some(sge2) = sge2 {
-            frag_sge.set_lkey(sge2.key.into_be().into());
-            frag_sge.set_len(sge2.len.to_be().into());
-            frag_sge.set_laddr(sge2.addr.to_be());
+            frag_sge.set_lkey(sge2.key.get().into());
+            frag_sge.set_len(sge2.len.into());
+            frag_sge.set_laddr(sge2.addr);
         } else {
             frag_sge.set_lkey(0);
             frag_sge.set_len(0);
@@ -709,9 +708,9 @@ impl ToHostWorkRbDesc {
 
             // first 12 bytes are desc type, status and bth
             let mut frag_reth = MeatReportQueueDescFragRETH(&src[12..]);
-            let addr = u64::from_be(frag_reth.get_va());
-            let key = Key::from_be(frag_reth.get_rkey() as u32);
-            let len = u32::from_be(frag_reth.get_dlen() as u32);
+            let addr = frag_reth.get_va();
+            let key = Key::new(frag_reth.get_rkey() as u32);
+            let len = frag_reth.get_dlen() as u32;
 
             (addr, key, len)
         }
@@ -724,7 +723,7 @@ impl ToHostWorkRbDesc {
             // first 28 bytes are desc type, status, bth and reth
             let mut imm = MeatReportQueueDescFragImmDT(&src[28..32]);
             // call the `to_be` to convert order
-            imm.get_imm().to_be()
+            imm.get_imm()
         }
 
         // (last_psn, msn, value, code)
@@ -738,8 +737,8 @@ impl ToHostWorkRbDesc {
 
             // first 12 bytes are desc type, status and bth
             let mut frag_aeth = MeatReportQueueDescFragAETH(&src[12..]);
-            let psn = Psn::from_be(frag_aeth.get_psn());
-            let msn = Msn::from_be(frag_aeth.get_msn());
+            let psn = Psn::new(frag_aeth.get_psn());
+            let msn = Msn::new(frag_aeth.get_msn());
             let value = frag_aeth.get_aeth_value() as u8;
             let code = ToHostWorkRbDescAethCode::try_from(frag_aeth.get_aeth_code() as u8).unwrap();
 
@@ -774,8 +773,8 @@ impl ToHostWorkRbDesc {
         let trans =
             ToHostWorkRbDescTransType::try_from(desc_frag_bth.get_trans_type() as u8).unwrap();
         let opcode = ToHostWorkRbDescOpcode::try_from(desc_frag_bth.get_opcode() as u8).unwrap();
-        let dqpn = Qpn::from_be(desc_frag_bth.get_qpn());
-        let psn = Psn::from_be(desc_frag_bth.get_psn());
+        let dqpn = Qpn::new(desc_frag_bth.get_qpn());
+        let psn = Psn::new(desc_frag_bth.get_psn());
         let pad_cnt = desc_frag_bth.get_pad_cnt() as u8;
 
         let common = ToHostWorkRbDescCommon {
@@ -930,7 +929,7 @@ impl IncompleteToHostWorkRbDesc {
             // } MeatReportQueueDescFragSecondaryRETH deriving(Bits, FShow);
             let secondary_reth = MeatReportQueueDescFragSecondaryRETH(&src);
             let addr = secondary_reth.get_secondary_va();
-            let key = Key::from_be(secondary_reth.get_secondary_rkey() as u32);
+            let key = Key::new(secondary_reth.get_secondary_rkey() as u32);
 
             (addr, key)
         }

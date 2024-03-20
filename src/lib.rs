@@ -14,13 +14,9 @@ use qp::QpContext;
 use recv_pkt_map::RecvPktMap;
 use responser::{DescResponser, WorkDescriptorSender};
 use std::{
-    collections::HashMap,
-    net::SocketAddr,
-    sync::{
-        atomic::{AtomicBool, AtomicU32, Ordering},
-        Arc, Mutex, OnceLock, RwLock,
-    },
-    thread::{self},
+    collections::HashMap, net::SocketAddr, sync::{
+        atomic::{AtomicBool, AtomicU32, Ordering}, Arc, Mutex, OnceLock, RwLock
+    }, thread
 };
 use types::{Key, MemAccessTypeFlag, Psn, Qpn};
 use utils::calculate_packet_cnt;
@@ -48,7 +44,6 @@ const QP_MAX_CNT: usize = 1024;
 
 #[derive(Clone)]
 pub struct Device(Arc<DeviceInner<dyn DeviceAdaptor>>);
-
 struct DeviceInner<D: ?Sized> {
     pd: Mutex<HashMap<Pd, PdCtx>>,
     mr_table: Mutex<[Option<MrCtx>; MR_TABLE_SIZE]>,
@@ -147,7 +142,6 @@ impl Device {
         // by IB spec, QP0 and QP1 are reserved, so qpn should start with 2
         qp_availability[0].store(false, Ordering::Relaxed);
         qp_availability[1].store(false, Ordering::Relaxed);
-
         let inner = Arc::new(DeviceInner {
             pd: Mutex::new(HashMap::new()),
             mr_table: Mutex::new([Self::MR_TABLE_EMPTY_ELEM; MR_TABLE_SIZE]),
@@ -203,7 +197,7 @@ impl Device {
                 qp_type: qp.qp_type,
                 psn: Psn::default(),
             };
-
+            println!("{:?}",common);
             let send_psn = &mut qp.inner.lock().unwrap().send_psn;
             common.psn = *send_psn;
             let packet_cnt = calculate_packet_cnt(qp.pmtu.clone(), raddr, total_len);
@@ -307,6 +301,13 @@ impl Device {
 
     fn init(&self) -> Result<(), Error> {
         let (send_queue, rece_queue) = std::sync::mpsc::channel();
+        let dev_for_poll_ctrl_rb = self.clone();
+        let recv_pkt_map = Arc::new(RwLock::new(HashMap::new()));
+
+        // enable ctrl desc poller module
+        thread::spawn(move || dev_for_poll_ctrl_rb.poll_ctrl_rb());
+
+        // enable responser module
         let ack_buf = self.init_ack_buf()?;
         let responser = DescResponser::new(
             Arc::new(self.clone()),
@@ -317,9 +318,7 @@ impl Device {
         if self.0.responser.set(responser).is_err() {
             panic!("responser has been set");
         }
-
-        let dev_for_poll_ctrl_rb = self.clone();
-        let recv_pkt_map = Arc::new(RwLock::new(HashMap::new()));
+        // enable work desc poller module.
         let work_desc_poller = WorkDescPoller::new(
             self.0.adaptor.to_host_work_rb(),
             recv_pkt_map.clone(),
@@ -330,13 +329,14 @@ impl Device {
         if self.0.work_desc_poller.set(work_desc_poller).is_err() {
             panic!("work_desc_poller has been set");
         }
+
+        // enable packet checker module
         let pkt_checker_thread =
             PacketChecker::new(send_queue, recv_pkt_map, self.0.read_op_ctx_map.clone());
         if self.0.pkt_checker_thread.set(pkt_checker_thread).is_err() {
             panic!("pkt_checker_thread has been set");
         }
 
-        thread::spawn(move || dev_for_poll_ctrl_rb.poll_ctrl_rb());
         Ok(())
     }
 }

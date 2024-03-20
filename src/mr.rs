@@ -144,16 +144,17 @@ impl Device {
     }
 
     pub(crate) fn init_ack_buf(&self) -> Result<AcknowledgeBuffer,Error>{
-        let buffer = Box::into_raw(Box::new([0u8; ACKNOWLEDGE_BUFFER_SIZE]));
+        let buffer = Box::leak(Box::new([0u8; ACKNOWLEDGE_BUFFER_SIZE]));
+        let pd = self.alloc_pd()?;
         let mr = self
             .reg_mr(
-                Pd { handle: 0 }, // FIXME: Do we need a special pd for acknowledge buffer?
-                buffer as u64,
+                pd, // FIXME: Do we need a special pd for acknowledge buffer?
+                buffer.as_mut_ptr() as u64,
                 ACKNOWLEDGE_BUFFER_SIZE as u32,
                 2 * 1024 * 1024, // 2MB
                 MemAccessTypeFlag::IbvAccessLocalWrite,
             )?;
-        let ack_buf = AcknowledgeBuffer::new(buffer as usize, ACKNOWLEDGE_BUFFER_SIZE, mr.get_key());
+        let ack_buf = AcknowledgeBuffer::new(buffer.as_mut_ptr() as usize, ACKNOWLEDGE_BUFFER_SIZE, mr.get_key());
         Ok(ack_buf)
     }
 
